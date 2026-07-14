@@ -1,0 +1,25 @@
+{% extends '@EasyAdmin/crud/detail.html.twig' %}
+
+{% set document = entity.instance %}
+{% set is_processing = document.status.value in ['queued', 'parsing'] %}
+
+{% block configured_head_contents %}
+    {{ parent() }}
+
+    {% if is_processing %}
+        <meta http-equiv="refresh" content="3">
+    {% endif %}
+{% endblock %}
+
+{% block main %}
+    {% if is_processing %}
+        <div class="alert alert-info d-flex align-items-center gap-2" role="alert">
+            <i class="fa fa-spinner fa-spin"></i>
+            <div>
+                Документ обрабатывается. Страница обновится автоматически.
+            </div>
+        </div>
+    {% endif %}
+
+    {{ parent() }}
+{% endblock %}

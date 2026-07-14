@@ -7,14 +7,31 @@
         "php": ">=8.4",
         "ext-ctype": "*",
         "ext-iconv": "*",
+        "doctrine/doctrine-bundle": "^3.2",
+        "doctrine/doctrine-migrations-bundle": "^4.0",
+        "doctrine/orm": "^3.6",
+        "easycorp/easyadmin-bundle": "^5.1",
+        "google/apiclient": "^2.0",
+        "league/flysystem-aws-s3-v3": "^3.35",
+        "league/flysystem-bundle": "^3.7",
+        "stof/doctrine-extensions-bundle": "^1.15",
+        "symfony/asset": "8.1.*",
+        "symfony/asset-mapper": "8.1.*",
         "symfony/console": "8.1.*",
         "symfony/dotenv": "8.1.*",
         "symfony/flex": "^2",
         "symfony/framework-bundle": "8.1.*",
+        "symfony/http-client": "8.1.*",
+        "symfony/messenger": "8.1.*",
+        "symfony/process": "8.1.*",
+        "symfony/redis-messenger": "8.1.*",
         "symfony/runtime": "8.1.*",
-        "symfony/yaml": "8.1.*"
-    },
-    "require-dev": {
+        "symfony/security-bundle": "8.1.*",
+        "symfony/serializer": "8.1.*",
+        "symfony/twig-bundle": "8.1.*",
+        "symfony/validator": "8.1.*",
+        "symfony/yaml": "8.1.*",
+        "symfonycasts/sass-bundle": "^0.10.0"
     },
     "config": {
         "allow-plugins": {
@@ -50,7 +67,8 @@
     "scripts": {
         "auto-scripts": {
             "cache:clear": "symfony-cmd",
-            "assets:install %PUBLIC_DIR%": "symfony-cmd"
+            "assets:install %PUBLIC_DIR%": "symfony-cmd",
+            "importmap:install": "symfony-cmd"
         },
         "post-install-cmd": [
             "@auto-scripts"
@@ -67,5 +85,8 @@
             "allow-contrib": false,
             "require": "8.1.*"
         }
+    },
+    "require-dev": {
+        "symfony/maker-bundle": "^1.67"
     }
 }

@@ -1,0 +1,14 @@
+.git
+.idea
+var/cache
+var/log
+vendor
+node_modules
+parser/.venv
+
+.env.local
+.env.*.local
+var/
+.DS_Store
+public/assets
+assets/vendor

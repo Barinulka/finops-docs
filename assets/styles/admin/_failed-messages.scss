@@ -1,0 +1,102 @@
+.failed-messages-toolbar {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.failed-messages-list {
+    display: grid;
+    gap: 12px;
+}
+
+.failed-message-card {
+    background: var(--body-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 16px;
+}
+
+.failed-message-card__header {
+    align-items: flex-start;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+}
+
+.failed-message-card__title {
+    font-weight: 700;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+
+.failed-message-card__id {
+    color: var(--text-muted);
+    display: inline-block;
+    margin-top: 4px;
+}
+
+.failed-message-card__actions {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 8px;
+}
+
+.failed-message-card__meta {
+    display: grid;
+    gap: 12px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    margin: 16px 0;
+}
+
+.failed-message-card__meta div {
+    background: var(--table-thead-bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+}
+
+.failed-message-card__meta dt {
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.failed-message-card__meta dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+.failed-message-card__diagnostics {
+    background: var(--table-thead-bg);
+    border-radius: 6px;
+    padding: 12px;
+}
+
+.failed-message-card__exception {
+    font-weight: 700;
+    overflow-wrap: anywhere;
+}
+
+.failed-message-card__message {
+    margin-top: 6px;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.failed-message-card__code {
+    color: var(--text-muted);
+    margin-top: 8px;
+}
+
+@media (max-width: 900px) {
+    .failed-message-card__header,
+    .failed-message-card__actions {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .failed-message-card__meta {
+        grid-template-columns: 1fr;
+    }
+}

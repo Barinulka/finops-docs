@@ -1,0 +1,22 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% form_theme form '@EasyAdmin/crud/form_theme.html.twig' %}
+
+{% block content_title %}
+    Загрузка документа
+{% endblock %}
+
+{% block main %}
+    <div class="content-panel">
+        <div class="content-panel-body">
+            {{ form_start(form) }}
+            {{ form_row(form.client) }}
+            {{ form_row(form.file) }}
+
+            <button class="btn btn-primary" type="submit">
+                Загрузить
+            </button>
+            {{ form_end(form) }}
+        </div>
+    </div>
+{% endblock %}

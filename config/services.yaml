@@ -7,6 +7,13 @@
 # Put parameters here that don't need to change on each machine where the app is deployed
 # https://symfony.com/doc/current/best_practices.html#use-parameters-for-application-configuration
 parameters:
+    telegram.bot_token: '%env(TELEGRAM_BOT_TOKEN)%'
+    telegram.webhook_secret: '%env(TELEGRAM_WEBHOOK_SECRET)%'
+    telegram.allowed_max_file_size: '%env(int:TELEGRAM_ALLOWED_MAX_FILE_SIZE)%'
+
+    google_sheets.spreadsheet_id: '%env(GOOGLE_SHEETS_SPREADSHEET_ID)%'
+    google_sheets.sheet_name: '%env(GOOGLE_SHEETS_SHEET_NAME)%'
+    google_sheets.credentials_path: '%env(GOOGLE_SERVICE_ACCOUNT_CREDENTIALS_PATH)%'
 
 services:
     # default configuration for services in *this* file
@@ -21,3 +28,25 @@ services:
 
     # add more service definitions when explicit configuration is needed
     # please note that last definitions always *replace* previous ones
+
+    Aws\S3\S3Client:
+        arguments:
+            -   version: 'latest'
+                region: '%env(MINIO_REGION)%'
+                endpoint: '%env(MINIO_ENDPOINT)%'
+                use_path_style_endpoint: true
+                credentials:
+                    key: '%env(MINIO_ACCESS_KEY)%'
+                    secret: '%env(MINIO_SECRET_KEY)%'
+
+    App\Service\Telegram\TelegramBotConfig:
+        arguments:
+            $botToken: '%telegram.bot_token%'
+            $webhookSecret: '%telegram.webhook_secret%'
+            $allowedMaxFileSize: '%telegram.allowed_max_file_size%'
+
+    App\Service\GoogleSheets\GoogleSheetsConfig:
+        arguments:
+            $spreadsheetId: '%google_sheets.spreadsheet_id%'
+            $sheetName: '%google_sheets.sheet_name%'
+            $credentialsPath: '%google_sheets.credentials_path%'

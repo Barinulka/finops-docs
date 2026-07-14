@@ -1,0 +1,68 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block content_title %}
+    Ошибки очереди
+{% endblock %}
+
+{% block main %}
+    <div class="failed-messages-toolbar">
+        <div>
+            <strong>{{ messages|length }}</strong>
+            {{ messages|length == 1 ? 'сообщение' : 'сообщений' }} в failed-очереди
+        </div>
+    </div>
+
+    {% if messages is empty %}
+        <div class="alert alert-success">
+            Failed-очередь пуста.
+        </div>
+    {% else %}
+        <div class="failed-messages-list">
+            {% for message in messages %}
+                <article class="failed-message-card">
+                    <header class="failed-message-card__header">
+                        <div>
+                            <div class="failed-message-card__title">{{ message.messageClass }}</div>
+                            <code class="failed-message-card__id">{{ message.id }}</code>
+                        </div>
+
+                        <div class="failed-message-card__actions">
+                            <form method="post" action="{{ path('admin_messenger_failed_retry', { id: message.id }) }}">
+                                <input type="hidden" name="_token" value="{{ csrf_token('failed_message_retry_' ~ message.id) }}">
+                                <button class="btn btn-primary" type="submit">Повторить</button>
+                            </form>
+
+                            <form method="post" action="{{ path('admin_messenger_failed_remove', { id: message.id }) }}" onsubmit="return confirm('Удалить сообщение из failed-очереди?');">
+                                <input type="hidden" name="_token" value="{{ csrf_token('failed_message_remove_' ~ message.id) }}">
+                                <button class="btn btn-secondary" type="submit">Удалить</button>
+                            </form>
+                        </div>
+                    </header>
+
+                    <dl class="failed-message-card__meta">
+                        <div>
+                            <dt>Время ошибки</dt>
+                            <dd>{{ message.failedAt ?? 'Неизвестно' }}</dd>
+                        </div>
+                        <div>
+                            <dt>Попыток</dt>
+                            <dd>{{ message.retryCount }}</dd>
+                        </div>
+                        <div>
+                            <dt>Исходная очередь</dt>
+                            <dd>{{ message.originalTransport ?? 'Неизвестно' }}</dd>
+                        </div>
+                    </dl>
+
+                    <div class="failed-message-card__diagnostics">
+                        <div class="failed-message-card__exception">{{ message.exceptionClass ?? 'Класс ошибки не указан' }}</div>
+                        <div class="failed-message-card__message">{{ message.exceptionMessage ?? 'Сообщение ошибки не указано' }}</div>
+                        {% if message.exceptionCode is not empty %}
+                            <div class="failed-message-card__code">Код: {{ message.exceptionCode }}</div>
+                        {% endif %}
+                    </div>
+                </article>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}

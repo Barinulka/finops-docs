@@ -1,0 +1,21 @@
+services:
+  app:
+    ports:
+      - "8000:8000"
+  parser:
+    ports:
+      - "8001:8001"
+###> doctrine/doctrine-bundle ###
+  database:
+    ports:
+      - "5432:5432"
+###< doctrine/doctrine-bundle ###
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  minio:
+    ports:
+      - "19000:9000"
+      - "9001:9001"

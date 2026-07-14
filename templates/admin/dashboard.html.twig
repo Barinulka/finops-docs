@@ -1,0 +1,40 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block content_title %}
+    Панель управления
+{% endblock %}
+
+{% block main %}
+    <div class="dashboard-stat-grid">
+        <a class="dashboard-stat-card" href="{{ path('admin_client_index') }}">
+            <span class="dashboard-stat-label">Клиенты</span>
+            <span class="dashboard-stat-value">{{ clientsCount }}</span>
+            <span class="dashboard-stat-action">Открыть список</span>
+        </a>
+
+        <a class="dashboard-stat-card" href="{{ path('admin_document_index') }}">
+            <span class="dashboard-stat-label">Документы</span>
+            <span class="dashboard-stat-value">{{ documentsCount }}</span>
+            <span class="dashboard-stat-action">Открыть список</span>
+        </a>
+
+        <a class="dashboard-stat-card" href="{{ path('admin_operation_index') }}">
+            <span class="dashboard-stat-label">Операции</span>
+            <span class="dashboard-stat-value">{{ operationsCount }}</span>
+            <span class="dashboard-stat-action">Открыть список</span>
+        </a>
+
+        {% if is_granted('ROLE_ADMIN') %}
+            <a class="dashboard-stat-card" href="{{ path('admin_audit_log_index') }}">
+                <span class="dashboard-stat-label">События аудита</span>
+                <span class="dashboard-stat-value">{{ auditLogsCount }}</span>
+                <span class="dashboard-stat-action">Открыть список</span>
+            </a>
+        {% else %}
+            <div class="dashboard-stat-card">
+                <span class="dashboard-stat-label">События аудита</span>
+                <span class="dashboard-stat-value">{{ auditLogsCount }}</span>
+            </div>
+        {% endif %}
+    </div>
+{% endblock %}
