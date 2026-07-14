@@ -1,0 +1,132 @@
+x-app-environment: &app-environment
+  APP_ENV: prod
+  APP_DEBUG: "0"
+  APP_SECRET: ${APP_SECRET}
+
+  DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}?serverVersion=16&charset=utf8"
+
+  MESSENGER_TRANSPORT_DSN: "redis://redis:6379/messages"
+  MESSENGER_FAILED_TRANSPORT_DSN: "redis://redis:6379/failed_messages"
+
+  MINIO_ENDPOINT: "http://minio:9000"
+  MINIO_PUBLIC_ENDPOINT: "https://finops-docs.ru"
+  MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
+  MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+  MINIO_BUCKET: ${MINIO_BUCKET}
+  MINIO_REGION: ${MINIO_REGION}
+
+  PARSER_BASE_URI: "http://parser:8001"
+
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+  TELEGRAM_WEBHOOK_SECRET: ${TELEGRAM_WEBHOOK_SECRET}
+  TELEGRAM_ALLOWED_MAX_FILE_SIZE: ${TELEGRAM_ALLOWED_MAX_FILE_SIZE}
+
+  GOOGLE_SHEETS_SPREADSHEET_ID: ${GOOGLE_SHEETS_SPREADSHEET_ID}
+  GOOGLE_SHEETS_SHEET_NAME: ${GOOGLE_SHEETS_SHEET_NAME}
+  GOOGLE_SERVICE_ACCOUNT_CREDENTIALS_PATH: ${GOOGLE_SERVICE_ACCOUNT_CREDENTIALS_PATH}
+
+  GOOGLE_API_KEY: ""
+  GOOGLE_CLIENT_ID: ""
+  GOOGLE_CLIENT_SECRET: ""
+  GOOGLE_AUTH_CONFIG: ${GOOGLE_SERVICE_ACCOUNT_CREDENTIALS_PATH}
+
+x-app-depends-on: &app-depends-on
+  database:
+    condition: service_healthy
+  redis:
+    condition: service_healthy
+  minio:
+    condition: service_started
+  parser:
+    condition: service_healthy
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    working_dir: /app
+    environment: *app-environment
+    volumes:
+      - .:/app
+      - dart_sass_data:/app/var/dart-sass
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on: *app-depends-on
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      args:
+        USER_ID: ${USER_ID:-1000}
+        GROUP_ID: ${GROUP_ID:-1000}
+    working_dir: /app
+    command: ["php", "bin/console", "messenger:consume", "async", "-vv", "--time-limit=3600"]
+    environment: *app-environment
+    volumes:
+      - .:/app
+      - dart_sass_data:/app/var/dart-sass
+    depends_on: *app-depends-on
+    restart: unless-stopped
+
+  parser:
+    build:
+      context: .
+      dockerfile: docker/parser/Dockerfile
+    working_dir: /app/parser
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health')"]
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
+  database:
+    image: postgres:${POSTGRES_VERSION:-16}-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER}
+    healthcheck:
+      test: ["CMD", "pg_isready", "-d", "${POSTGRES_DB}", "-U", "${POSTGRES_USER}"]
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - database_data:/var/lib/postgresql/data:rw
+    restart: unless-stopped
+
+  redis:
+    image: redis:${REDIS_VERSION:-7.4}-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    volumes:
+      - redis_data:/data:rw
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:${MINIO_VERSION:-latest}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio_data:/data:rw
+    restart: unless-stopped
+
+volumes:
+  database_data:
+  redis_data:
+  minio_data:
+  dart_sass_data:
