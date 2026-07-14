@@ -1,34 +1,64 @@
 {% extends 'base.html.twig' %}
 
-{% block title %}Log in!{% endblock %}
+{% block title %}Вход в CRM{% endblock %}
 
 {% block body %}
-<form method="post">
-    {% if error %}
-        <div class="alert alert-danger">{{ error.messageKey|trans(error.messageData, 'security') }}</div>
-    {% endif %}
+    <div class="login-page">
+        <main class="login-panel">
+            <div class="login-panel__header">
+                <div class="login-panel__brand">CRM</div>
+                <h1 class="login-panel__title">Вход в систему</h1>
+            </div>
 
-    {% if app.user %}
-        <div class="mb-3">
-            You are logged in as {{ app.user.userIdentifier }}, <a href="{{ logout_path() }}">Logout</a>
-        </div>
-    {% endif %}
+            {% if error %}
+                <div class="login-alert">
+                    {{ error.messageKey|trans(error.messageData, 'security') }}
+                </div>
+            {% endif %}
 
-    <h1 class="h3 mb-3 font-weight-normal">Please sign in</h1>
-    <label for="inputEmail">Email</label>
-    <input type="email" value="{{ last_username }}" name="email" id="inputEmail" class="form-control" autocomplete="email" required autofocus>
-    <label for="inputPassword">Password</label>
-    <input type="password" name="password" id="inputPassword" class="form-control" autocomplete="current-password" required>
-    <input type="hidden" name="_csrf_token" data-controller="csrf-protection" value="{{ csrf_token('authenticate') }}">
+            {% if app.user %}
+                <div class="login-alert login-alert--info">
+                    Вы уже вошли как {{ app.user.userIdentifier }}.
+                    <a href="{{ logout_path() }}">Выйти</a>
+                </div>
+            {% endif %}
 
-    <div class="checkbox mb-3">
-        <label>
-            <input type="checkbox" name="_remember_me"> Remember me
-        </label>
+            <form method="post" class="login-form">
+                <div class="login-form__field">
+                    <label for="inputEmail">Email</label>
+                    <input
+                        type="email"
+                        value="{{ last_username }}"
+                        name="email"
+                        id="inputEmail"
+                        autocomplete="email"
+                        required
+                        autofocus
+                    >
+                </div>
+
+                <div class="login-form__field">
+                    <label for="inputPassword">Пароль</label>
+                    <input
+                        type="password"
+                        name="password"
+                        id="inputPassword"
+                        autocomplete="current-password"
+                        required
+                    >
+                </div>
+
+                <input type="hidden" name="_csrf_token" data-controller="csrf-protection" value="{{ csrf_token('authenticate') }}">
+
+                <label class="login-form__remember">
+                    <input type="checkbox" name="_remember_me">
+                    <span>Запомнить меня</span>
+                </label>
+
+                <button class="login-form__submit" type="submit">
+                    Войти
+                </button>
+            </form>
+        </main>
     </div>
-
-    <button class="btn btn-lg btn-primary" type="submit">
-        Sign in
-    </button>
-</form>
 {% endblock %}

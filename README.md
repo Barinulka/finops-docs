@@ -189,3 +189,169 @@ docker compose exec app php bin/console doctrine:migrations:status
 docker compose exec app php bin/console debug:router
 docker compose exec app php bin/console app:user:create
 ```
+
+## Production
+
+Production-развертывание выполняется через отдельный compose-файл:
+
+```bash
+compose.prod.yaml
+```
+
+Пример переменных окружения:
+
+```bash
+.env.prod.example
+```
+
+Реальный файл `.env.prod` создается только на сервере и не коммитится. В нем должны быть заданы секреты и внешние интеграции:
+
+```dotenv
+APP_SECRET=
+APP_LOCALE=ru
+
+POSTGRES_DB=app
+POSTGRES_USER=app
+POSTGRES_PASSWORD=
+
+MINIO_ROOT_USER=app
+MINIO_ROOT_PASSWORD=
+MINIO_BUCKET=crm-documents
+MINIO_REGION=us-east-1
+
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_WEBHOOK_SECRET=
+TELEGRAM_ALLOWED_MAX_FILE_SIZE=20971520
+
+GOOGLE_SHEETS_SPREADSHEET_ID=
+GOOGLE_SHEETS_SHEET_NAME=Лист1
+GOOGLE_SERVICE_ACCOUNT_CREDENTIALS_PATH=/app/var/google/service-account.json
+```
+
+Файл сервисного аккаунта Google должен лежать на сервере:
+
+```text
+var/google/service-account.json
+```
+
+Этот файл содержит секреты и не должен попадать в Git.
+
+### Первый запуск на сервере
+
+Собрать образы:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml build
+```
+
+Запустить контейнеры:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml up -d
+```
+
+Установить PHP-зависимости:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml exec app composer install --no-dev --optimize-autoloader
+```
+
+Применить миграции:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml exec app php bin/console doctrine:migrations:migrate --no-interaction
+```
+
+Собрать ассеты и очистить cache:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml exec app php bin/console sass:build
+docker compose --env-file .env.prod -f compose.prod.yaml exec app php bin/console asset-map:compile
+docker compose --env-file .env.prod -f compose.prod.yaml exec app php bin/console cache:clear
+```
+
+Проверить контейнеры:
+
+```bash
+docker compose --env-file .env.prod -f compose.prod.yaml ps
+```
+
+Проверить приложение локально на сервере:
+
+```bash
+curl -I http://127.0.0.1:8000/admin
+```
+
+Ожидаемый ответ для закрытой админки:
+
+```text
+HTTP/1.1 302 Found
+Location: /login
+```
+
+### Caddy
+
+В production Caddy работает на сервере как reverse proxy:
+
+```caddyfile
+finops-docs.ru {
+    reverse_proxy 127.0.0.1:8000
+}
+
+www.finops-docs.ru {
+    redir https://finops-docs.ru{uri} permanent
+}
+```
+
+Проверка конфигурации:
+
+```bash
+caddy validate --config /etc/caddy/Caddyfile
+systemctl reload caddy
+systemctl status caddy --no-pager
+```
+
+Проверка HTTPS:
+
+```bash
+curl -I https://finops-docs.ru/admin
+```
+
+### Telegram webhook
+
+Роут webhook:
+
+```text
+POST /telegram/webhook/{secret}
+```
+
+Установить webhook:
+
+```bash
+source .env.prod
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/setWebhook?url=https://finops-docs.ru/telegram/webhook/${TELEGRAM_WEBHOOK_SECRET}"
+```
+
+Проверить webhook:
+
+```bash
+curl -s "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Секрет из URL webhook нельзя публиковать. Если он попал в открытый чат или логи, нужно сгенерировать новый `TELEGRAM_WEBHOOK_SECRET`, обновить `.env.prod`, пересоздать контейнеры `app` и `worker`, затем заново вызвать `setWebhook`.
+
+### Telegram-пользователи
+
+Доступ к боту разрешается через сущность `TelegramUser`.
+
+Если неизвестный пользователь пишет боту, бот должен вернуть его Telegram ID. После этого администратора добавляет пользователя в админке:
+
+```text
+Telegram ID
+Username
+First name
+Is active
+Role
+```
+
+После добавления пользователь может отправлять PDF-файлы боту. Бот парсит документ, показывает результат и дает кнопки для записи в Google Sheets или отклонения.
