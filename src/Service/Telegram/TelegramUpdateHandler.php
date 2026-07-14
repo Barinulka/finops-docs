@@ -5,6 +5,7 @@ namespace App\Service\Telegram;
 use App\Entity\TelegramDocument;
 use App\Entity\TelegramMessageLog;
 use App\Entity\TelegramUser;
+use App\Enum\Telegram\TelegramUserRole;
 use App\Enum\Telegram\GoogleSheetAppendStatus;
 use App\Enum\Telegram\TelegramDocumentSource;
 use App\Enum\Telegram\TelegramDocumentStatus;
@@ -108,10 +109,22 @@ final readonly class TelegramUpdateHandler
             return;
         }
 
+        $text = $message['text'] ?? null;
+
         if ($document === null) {
+            if ($text === '/history') {
+                $this->telegramMessageSender->sendText(
+                    $chatId,
+                    $this->buildHistoryMessage($telegramUser),
+                    $telegramUser,
+                );
+
+                return;
+            }
+
             $this->telegramMessageSender->sendText(
                 $chatId,
-                'Отправьте PDF-файл.',
+                "Отправьте PDF-файл.\n\nИстория загрузок: /history",
                 $telegramUser,
             );
 
@@ -453,5 +466,49 @@ final readonly class TelegramUpdateHandler
              * или отмена документа уже выполнены, поэтому webhook не роняем.
              */
         }
+    }
+
+    private function buildHistoryMessage(TelegramUser $telegramUser): string
+    {
+        $isAdmin = $telegramUser->getRole() === TelegramUserRole::Admin;
+
+        $documents = $isAdmin
+            ? $this->telegramDocumentRepository->findRecent(20)
+            : $this->telegramDocumentRepository->findRecentForUser($telegramUser, 10);
+
+        if ($documents === []) {
+            return $isAdmin
+                ? 'Загруженных документов пока нет.'
+                : 'У вас пока нет загруженных документов.';
+        }
+
+        $lines = [
+            $isAdmin ? 'Последние загруженные документы:' : 'Ваши последние загруженные документы:',
+            '',
+        ];
+
+        foreach ($documents as $index => $document) {
+            $createdAt = $document->getCreatedAt()?->format('d.m.Y H:i') ?? 'дата неизвестна';
+            $filename = $document->getOriginalFilename() ?: 'файл без названия';
+            $status = $document->getStatus()->label();
+            $user = (string) $document->getTelegramUser();
+
+            $writtenText = $document->getWrittenAt() !== null
+                ? sprintf('записан в таблицу %s', $document->getWrittenAt()->format('d.m.Y H:i'))
+                : 'не записан в таблицу';
+
+            $lines[] = sprintf(
+                "%d. %s\nПользователь: %s\nДата: %s\nСтатус: %s, %s",
+                $index + 1,
+                $filename,
+                $user,
+                $createdAt,
+                $status,
+                $writtenText,
+            );
+            $lines[] = '';
+        }
+
+        return trim(implode("\n", $lines));
     }
 }

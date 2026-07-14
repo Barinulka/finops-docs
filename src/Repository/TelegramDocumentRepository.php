@@ -3,6 +3,7 @@
 namespace App\Repository;
 
 use App\Entity\TelegramDocument;
+use App\Entity\TelegramUser;
 use Doctrine\Bundle\DoctrineBundle\Repository\ServiceEntityRepository;
 use Doctrine\Persistence\ManagerRegistry;
 
@@ -25,5 +26,35 @@ final class TelegramDocumentRepository extends ServiceEntityRepository
         return $this->findOneBy([
             'telegramFileUniqueId' => $fileUniqueId,
         ]);
+    }
+
+    /**
+     * @return list<TelegramDocument>
+     */
+    public function findRecentForUser(TelegramUser $telegramUser, int $limit = 10): array
+    {
+        return $this->createQueryBuilder('document')
+            ->andWhere('document.telegramUser = :telegramUser')
+            ->setParameter('telegramUser', $telegramUser)
+            ->orderBy('document.createdAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult()
+            ;
+    }
+
+    /**
+     * @return list<TelegramDocument>
+     */
+    public function findRecent(int $limit = 20): array
+    {
+        return $this->createQueryBuilder('document')
+            ->addSelect('telegramUser')
+            ->leftJoin('document.telegramUser', 'telegramUser')
+            ->orderBy('document.createdAt', 'DESC')
+            ->setMaxResults($limit)
+            ->getQuery()
+            ->getResult()
+            ;
     }
 }
