@@ -14,6 +14,7 @@ use App\Enum\Telegram\TelegramMessageStatus;
 use App\Repository\TelegramDocumentRepository;
 use App\Repository\TelegramUserRepository;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 
 final readonly class TelegramUpdateHandler
 {
@@ -28,6 +29,7 @@ final readonly class TelegramUpdateHandler
         private TelegramDocumentParser $telegramDocumentParser,
         private TelegramDocumentReviewMessageFactory $reviewMessageFactory,
         private TelegramDocumentGoogleSheetWriter $googleSheetWriter,
+        private UrlGeneratorInterface $urlGenerator,
     ) {
     }
 
@@ -497,14 +499,21 @@ final readonly class TelegramUpdateHandler
                 ? sprintf('записан в таблицу %s', $document->getWrittenAt()->format('d.m.Y H:i'))
                 : 'не записан в таблицу';
 
+            $documentUrl = $this->urlGenerator->generate(
+                'admin_telegram_document_download',
+                ['entityId' => (string) $document->getId()],
+                UrlGeneratorInterface::ABSOLUTE_URL,
+            );
+
             $lines[] = sprintf(
-                "%d. %s\nПользователь: %s\nДата: %s\nСтатус: %s, %s",
+                "%d. %s\nПользователь: %s\nДата: %s\nСтатус: %s, %s\nPDF: %s",
                 $index + 1,
                 $filename,
                 $user,
                 $createdAt,
                 $status,
                 $writtenText,
+                $documentUrl,
             );
             $lines[] = '';
         }
