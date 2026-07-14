@@ -98,7 +98,10 @@ final readonly class TelegramUpdateHandler
         if (!$telegramUser || !$telegramUser->isActive()) {
             $this->telegramMessageSender->sendText(
                 $chatId,
-                'У вас нет доступа к этому боту.',
+                sprintf(
+                    "У вас нет доступа к этому боту.\nВаш Telegram ID: %s\nПередайте этот ID администратору.",
+                    (string) $telegramUserId,
+                ),
                 $telegramUser,
             );
 
