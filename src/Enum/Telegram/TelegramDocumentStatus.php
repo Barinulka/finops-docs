@@ -14,6 +14,7 @@ enum TelegramDocumentStatus: string
     case Written = 'written';
     case Failed = 'failed';
     case Cancelled = 'cancelled';
+    case ValidationFailed = 'validation_failed';
 
     public function label(): string
     {
@@ -28,6 +29,7 @@ enum TelegramDocumentStatus: string
             self::Written => 'Записан в таблицу',
             self::Failed => 'Ошибка',
             self::Cancelled => 'Отменен',
+            self::ValidationFailed => 'Проверка не пройдена',
         };
     }
 
@@ -44,6 +46,7 @@ enum TelegramDocumentStatus: string
             self::Written => 'text-bg-success',
             self::Failed => 'text-bg-danger',
             self::Cancelled => 'text-bg-secondary',
+            self::ValidationFailed => 'text-bg-danger',
         };
     }
 }

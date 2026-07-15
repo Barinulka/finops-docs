@@ -30,6 +30,7 @@ final readonly class TelegramUpdateHandler
         private TelegramDocumentReviewMessageFactory $reviewMessageFactory,
         private TelegramDocumentGoogleSheetWriter $googleSheetWriter,
         private UrlGeneratorInterface $urlGenerator,
+        private TelegramDocumentBusinessValidator $businessValidator,
     ) {
     }
 
@@ -199,6 +200,13 @@ final readonly class TelegramUpdateHandler
             $telegramDocument->setSizeBytes($downloadedFile->sizeBytes);
 
             $this->telegramDocumentParser->parse($telegramDocument, $downloadedFile->contents);
+
+            $validationResult = $this->businessValidator->validate($telegramDocument);
+
+            if (!$validationResult->valid) {
+                $telegramDocument->setStatus(TelegramDocumentStatus::ValidationFailed);
+                $telegramDocument->setValidationErrors($validationResult->errors);
+            }
         } catch (\Throwable $exception) {
             $telegramDocument->setStatus(TelegramDocumentStatus::Failed);
             $telegramDocument->setErrorMessage($exception->getMessage());
@@ -223,6 +231,17 @@ final readonly class TelegramUpdateHandler
 
         $this->entityManager->persist($telegramDocument);
         $this->entityManager->flush();
+
+        if ($telegramDocument->getStatus() === TelegramDocumentStatus::ValidationFailed) {
+            $this->telegramMessageSender->sendText(
+                $chatId,
+                $this->buildValidationFailedMessage($telegramDocument),
+                $telegramUser,
+                $telegramDocument,
+            );
+
+            return;
+        }
 
         if (in_array($telegramDocument->getStatus(), [
             TelegramDocumentStatus::Parsed,
@@ -519,5 +538,19 @@ final readonly class TelegramUpdateHandler
         }
 
         return trim(implode("\n", $lines));
+    }
+
+    private function buildValidationFailedMessage(TelegramDocument $telegramDocument): string
+    {
+        $errors = $telegramDocument->getValidationErrors();
+
+        if ($errors === []) {
+            $errors = ['Документ не прошел бизнес-проверку.'];
+        }
+
+        return sprintf(
+            "Документ не прошел проверку.\n\nНайдены ошибки:\n- %s\n\nИсправьте документ и загрузите исправленную версию.",
+            implode("\n- ", $errors),
+        );
     }
 }
