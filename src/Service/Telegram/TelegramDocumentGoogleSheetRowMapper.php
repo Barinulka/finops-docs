@@ -37,6 +37,10 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             $fields['agencyFeePercent'] ?? null,
             $fields['agencyFeeAmountRub'] ?? null,
             $fields['totalAmountRub'] ?? null,
+            
+            $fields['paymentType'] ?? null,
+            $fields['paymentTypeRaw'] ?? null,
+            $fields['beneficiaryBank'] ?? null,
 
             /*
              * Сроки пока кладем одним комментарием, как попросил заказчик.

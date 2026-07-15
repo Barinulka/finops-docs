@@ -26,6 +26,9 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
         "executionDueDate": None,
         "paymentTermRaw": None,
         "paymentDueDate": None,
+        "paymentType": None,
+        "paymentTypeRaw": None,
+        "beneficiaryBank": None,
         "termsComment": None,
     }
     warnings: list[str] = []
@@ -113,6 +116,7 @@ def parse_contract_number_and_date(raw_text: str, fields: dict) -> None:
     # Сначала ищем договор/соглашение, к которому относится заявка или поручение.
     # Если его нет, берем импортный/платежный контракт как запасной бизнес-ориентир.
     patterns = [
+        r"Агентский\s+договор\s*№\s*([A-Za-zА-Яа-я0-9/_-]+)\s+от\s*(\d{2}[./]\d{2}[./]\d{4})",
         r"(?:Договора|Agreement)\s+No\s+([A-Za-zА-Яа-я0-9/_-]+)\s+(?:от|dated)\s*(\d{2}\.\d{2}\.\d{4})",
         r"(?:Агентскому|Agency|Субагентскому)\s+(?:Договору|Contract|договору|соглашению)\s*№?\s*([A-Za-zА-Яа-я0-9/_\-\s]+?)\s*(?:от|dated)\s*(\d{2}\.\d{2}\.\d{4})",
         r"(?:Импортный\s+контракт|Contract\s+No\.?)\s*:?\s*№?\s*([A-Za-zА-Яа-я0-9/_-]+)\s*(?:от|dd|dated|from)?\s*(\d{2}[.\-]\d{2}[.\-]\d{2,4})?",
@@ -143,6 +147,9 @@ def parse_agency_application(raw_text: str, fields: dict, warnings: list[str]) -
     parse_agency_application_execution_term(raw_text, fields, warnings)
     parse_agency_application_payment_term(raw_text, fields)
     parse_agency_application_exchange_rate(raw_text, fields)
+    parse_agency_application_invoice_payment_rub(raw_text, fields, warnings)
+    parse_agency_application_payment_type(raw_text, fields)
+    parse_agency_application_beneficiary_bank(raw_text, fields)
     parse_agency_fee_percent(raw_text, fields)
     parse_agency_application_agency_fee(raw_text, fields, warnings)
     parse_agency_application_total_amount(raw_text, fields, warnings)
@@ -255,7 +262,7 @@ def parse_agency_application_exchange_rate(raw_text: str, fields: dict) -> None:
     # Если курс явно указан, сохраняем и число, и исходный текст.
     # Если в документе только фраза "курс согласуется сторонами", считаем что курса нет.
     match = re.search(
-        r"(1\s+(?:EUR|USD|CNY|GBP|AED|TRY)\s*=\s*([0-9]+,\d+)\s*руб)",
+        r"((?:Курс\s+валюты:\s*)?1\s+(?:EUR|USD|CNY|GBP|AED|TRY|евро|доллар\w*|юан\w*)\s*=\s*([0-9]+,\d+)\s*руб)",
         raw_text,
         flags=re.IGNORECASE,
     )
@@ -268,6 +275,78 @@ def parse_agency_application_exchange_rate(raw_text: str, fields: dict) -> None:
     if re.search(r"Обменный\s+курс|exchange\s+rate", raw_text, flags=re.IGNORECASE):
         fields["exchangeRate"] = None
         fields["exchangeRateRaw"] = "нет"
+
+def parse_agency_application_invoice_payment_rub(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    # Для новых заявок рублевая сумма именно оплаты по инвойсу явно подписана:
+    # "Оплата по инвойсу составляет 11 916 095,30 руб."
+    # Это точнее, чем пытаться вычислять сумму через курс.
+    match = re.search(
+        r"(?:Оплата\s+по\s+инвойсу|Invoice\s+payment)\s+(?:составляет|is)\s+([0-9][0-9\s\u00a0]*[,.]\s*\d{2})\s*rub?",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    amount = normalize_decimal(match.group(1), scale=2)
+
+    if amount is None:
+        warnings.append(f'Invoice payment amount "{match.group(1)}" could not be normalized.')
+        return
+
+    fields["paymentAmountRub"] = amount
+
+
+def parse_agency_application_payment_type(raw_text: str, fields: dict) -> None:
+    # Вид оплаты пока сохраняем двумя значениями:
+    # - machine-readable paymentType;
+    # - исходный фрагмент paymentTypeRaw для проверки человеком.
+    match = re.search(
+        r"(prepayment|postpayment|payment\s+within\s+\d+\s+(?:calendar\s+)?days?|оплата\s+в\s+течение\s+\d+\s+(?:календарных\s+)?дн\w+|предоплата|постоплата)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    raw_value = normalize_spaces(match.group(0))
+    lowered = raw_value.lower()
+
+    if "prepayment" in lowered or "предоплат" in lowered:
+        payment_type = "prepayment"
+    elif "postpayment" in lowered or "постоплат" in lowered:
+        payment_type = "postpayment"
+    elif "within" in lowered or "течение" in lowered:
+        payment_type = "term"
+    else:
+        payment_type = "unknown"
+
+    fields["paymentType"] = payment_type
+    fields["paymentTypeRaw"] = raw_value
+
+
+def parse_agency_application_beneficiary_bank(raw_text: str, fields: dict) -> None:
+    # В банковских реквизитах встречается строка:
+    # "Name of Bank: International Asset Bank Swift Code: ..."
+    match = re.search(
+        r"Name\s+of\s+Bank:\s*(.+?)\s+Swift\s+Code:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is None:
+        match = re.search(
+            r"(?:Банк\s+получателя|Beneficiary[’']?s?\s+Bank):\s*(.+?)(?:\n|Swift|SWIFT|Bank Address|Address:)",
+            raw_text,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+    if match is None:
+        return
+
+    fields["beneficiaryBank"] = normalize_spaces(match.group(1))
 
 
 def parse_agency_application_agency_fee(raw_text: str, fields: dict, warnings: list[str]) -> None:
