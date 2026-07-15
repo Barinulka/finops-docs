@@ -14,10 +14,11 @@ final readonly class TelegramDocumentBusinessValidator
 
     public function validate(TelegramDocument $telegramDocument): TelegramDocumentValidationResult
     {
-        $fields = $telegramDocument->getParsedFields();
-        if (!$this->shouldValidate($fields)) {
+        if (!$this->supports($telegramDocument)) {
             return new TelegramDocumentValidationResult(true);
         }
+
+        $fields = $telegramDocument->getParsedFields();
         $errors = [];
 
         if ($errors !== []) {
@@ -94,33 +95,21 @@ final readonly class TelegramDocumentBusinessValidator
         return new TelegramDocumentValidationResult($errors === [], $errors);
     }
 
-    /**
-     * Проверку включаем только для документов, где парсер достал полный набор
-     * финансовых полей. Так мы не ломаем старые типы документов, где курса
-     * или процента вознаграждения может не быть.
-     *
-     * @param array<string, mixed> $fields
-     */
-    private function shouldValidate(array $fields): bool
+    private function supports(TelegramDocument $telegramDocument): bool
     {
-        $fieldsRequiredForValidation = [
-            'requestDate',
-            'paymentCurrency',
-            'paymentAmount',
-            'exchangeRate',
-            'agencyFeePercent',
-            'paymentAmountRub',
-            'agencyFeeAmountRub',
-            'totalAmountRub',
-        ];
+        $rawText = mb_strtolower($telegramDocument->getRawText() ?? '');
 
-        foreach ($fieldsRequiredForValidation as $fieldName) {
-            if (in_array($fields[$fieldName] ?? null, [null, ''], true)) {
-                return false;
-            }
-        }
-
-        return true;
+        /*
+         * Сейчас бизнес-проверку включаем только для нового шаблона заявки,
+         * где явно есть курс, комиссия агента и сумма оплаты по инвойсу.
+         *
+         * Это не просто application_form: старые заявки тоже имеют такой documentType,
+         * но не обязаны проходить эту финансовую сверку.
+         */
+        return str_contains($rawText, 'курс валюты:')
+            && str_contains($rawText, 'комиссия агента')
+            && str_contains($rawText, 'оплата по инвойсу составляет')
+            && str_contains($rawText, 'агентское вознаграждение составляет');
     }
 
     private function toScale(string $value, int $scale): string
