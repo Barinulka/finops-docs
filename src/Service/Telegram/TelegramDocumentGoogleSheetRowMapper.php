@@ -33,11 +33,11 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             $fields['paymentCurrency'] ?? null,
             $fields['paymentAmountRub'] ?? null,
 
-            $fields['exchangeRateRaw'] ?? null,
+            $fields['exchangeRate'] ?? null,
             $fields['agencyFeePercent'] ?? null,
             $fields['agencyFeeAmountRub'] ?? null,
             $fields['totalAmountRub'] ?? null,
-            
+
             $fields['paymentType'] ?? null,
             $fields['paymentTypeRaw'] ?? null,
             $fields['beneficiaryBank'] ?? null,
