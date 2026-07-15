@@ -29,6 +29,12 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
         "paymentType": None,
         "paymentTypeRaw": None,
         "beneficiaryBank": None,
+        "invoiceNumber": None,
+        "invoiceDate": None,
+        "beneficiaryName": None,
+        "beneficiaryAccount": None,
+        "swiftCode": None,
+        "paymentReference": None,
         "termsComment": None,
     }
     warnings: list[str] = []
@@ -40,6 +46,12 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
     # Общая ветка в else сейчас покрывает ASSTRA-заявки.
     if document_type == "subagent_instruction":
         parse_subagent_instruction(raw_text, fields, warnings)
+    elif document_type == "supplier_invoice":
+        parse_supplier_invoice(raw_text, fields, warnings)
+    elif document_type == "swift_mt103":
+        parse_swift_mt103(raw_text, fields, warnings)
+    elif document_type == "subagent_act_report":
+        parse_subagent_act_report(raw_text, fields, warnings)
     elif document_type == "application_form":
         parse_agency_application(raw_text, fields, warnings)
     else:
@@ -54,10 +66,232 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
 
     build_terms_comment(fields)
 
-    confidence = calculate_confidence(fields)
+    confidence = calculate_confidence(fields, document_type)
 
     return fields, warnings, document_type, confidence
 
+def parse_subagent_act_report(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    parse_subagent_act_report_number_and_date(raw_text, fields, warnings)
+    parse_subagent_act_report_invoice(raw_text, fields)
+    parse_subagent_act_report_amounts(raw_text, fields, warnings)
+
+
+def parse_subagent_act_report_number_and_date(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"Акт-отчет\s*№\s*([A-Za-zА-Яа-я0-9/_-]+)\s*от\s*(\d{2}\.\d{2}\.\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        warnings.append("Act report number and date were not found.")
+    else:
+        fields["requestNumber"] = normalize_spaces(match.group(1))
+        fields["requestDate"] = normalize_flexible_date(match.group(2))
+
+    instruction_match = re.search(
+        r"Поручения\s*№\s*([A-Za-zА-Яа-я0-9/_-]+)\s*от\s*(\d{2}\.\d{2}\.\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if instruction_match is not None:
+        fields["paymentReference"] = sprintf_subagent_instruction_reference(
+            instruction_match.group(1),
+            instruction_match.group(2),
+        )
+
+
+def sprintf_subagent_instruction_reference(number: str, date_raw: str) -> str:
+    return f"Поручение № {normalize_spaces(number)} от {date_raw}"
+
+
+def parse_subagent_act_report_invoice(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"Инвойс\s*:\s*No\s+([A-Za-z0-9]+)\s*[–-]\s*(\d{4})\s+from\s+(\d{2}\.\d{2}\.\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    fields["invoiceNumber"] = f"{match.group(1)}-{match.group(2)}"
+    fields["invoiceDate"] = normalize_flexible_date(match.group(3))
+
+
+def parse_subagent_act_report_amounts(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    row_match = re.search(
+        r"Экспортеру\s+(\d{2}\.\d{2}\.\d{4})\s+"
+        r"([0-9][0-9\s\u00a0]*,\d{2})\s+"
+        r"([0-9][0-9\s\u00a0]*,\d{2})\s+([A-Z]{3})\s+"
+        r"([0-9][0-9\s\u00a0]*,\d{2}).*?"
+        r"([0-9][0-9\s\u00a0]*,\d{2})",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if row_match is None:
+        warnings.append("Act report amounts were not found.")
+        return
+
+    payment_amount_rub = normalize_decimal(row_match.group(2), scale=2)
+    payment_amount = normalize_decimal(row_match.group(3), scale=2)
+    agency_fee = normalize_decimal(row_match.group(5), scale=2)
+    total_amount = normalize_decimal(row_match.group(6), scale=2)
+
+    if payment_amount_rub is None:
+        warnings.append(f'Act report RUB payment amount "{row_match.group(2)}" could not be normalized.')
+    else:
+        fields["paymentAmountRub"] = payment_amount_rub
+
+    if payment_amount is None:
+        warnings.append(f'Act report payment amount "{row_match.group(3)}" could not be normalized.')
+    else:
+        fields["paymentAmount"] = payment_amount
+
+    fields["paymentCurrency"] = row_match.group(4).upper()
+
+    if agency_fee is None:
+        warnings.append(f'Act report agency fee "{row_match.group(5)}" could not be normalized.')
+    else:
+        fields["agencyFeeAmountRub"] = agency_fee
+
+    if total_amount is None:
+        warnings.append(f'Act report total amount "{row_match.group(6)}" could not be normalized.')
+    else:
+        fields["totalAmountRub"] = total_amount
+
+    fields["executionTermRaw"] = f"Дата услуги: {row_match.group(1)}"
+    fields["termsComment"] = fields["executionTermRaw"]
+
+def parse_swift_mt103(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    parse_swift_reference(raw_text, fields, warnings)
+    parse_swift_amount_and_currency(raw_text, fields, warnings)
+    parse_swift_dates(raw_text, fields)
+    parse_swift_beneficiary(raw_text, fields)
+    parse_swift_invoice_reference(raw_text, fields)
+
+
+def parse_swift_reference(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"TRANSACTION\s+REFERENCE\s*([A-Za-z0-9-]+)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        match = re.search(
+            r"F20:\s*SENDER'S\s+REFERENCE\s*([A-Za-z0-9-]+)",
+            raw_text,
+            flags=re.IGNORECASE,
+        )
+
+    if match is None:
+        warnings.append("SWIFT payment reference was not found.")
+        return
+
+    fields["paymentReference"] = match.group(1)
+    fields["requestNumber"] = match.group(1)
+
+
+def parse_swift_amount_and_currency(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"F32A:\s*DATE\s*\d{6}\s*CURRENCY\s*([A-Z]{3})\s*AMOUNT\s*([0-9]+(?:[,.]\d{1,2})?)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        match = re.search(
+            r"AMOUNT\s*([0-9]+(?:[,.]\d{1,2})?)\s*CURRENCY\s*([A-Z]{3})",
+            raw_text,
+            flags=re.IGNORECASE,
+        )
+
+        if match is None:
+            warnings.append("SWIFT payment amount and currency were not found.")
+            return
+
+        amount_raw = match.group(1)
+        currency = match.group(2)
+    else:
+        currency = match.group(1)
+        amount_raw = match.group(2)
+
+    amount = normalize_decimal(amount_raw, scale=2)
+
+    if amount is None:
+        warnings.append(f'SWIFT payment amount "{amount_raw}" could not be normalized.')
+        return
+
+    fields["paymentAmount"] = amount
+    fields["paymentCurrency"] = currency.upper()
+
+
+def parse_swift_dates(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"F32A:\s*DATE\s*(\d{2})(\d{2})(\d{2})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    year = int(match.group(1))
+    full_year = 2000 + year
+    date_raw = f"{match.group(3)}.{match.group(2)}.{full_year}"
+
+    normalized_date = normalize_flexible_date(date_raw)
+
+    if normalized_date is None:
+        return
+
+    fields["requestDate"] = normalized_date
+
+
+def parse_swift_beneficiary(raw_text: str, fields: dict) -> None:
+    account_match = re.search(
+        r"F59A:\s*BENEFICIARY\s+ACCOUNT\s*([A-Za-z0-9]+)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if account_match is not None:
+        fields["beneficiaryAccount"] = account_match.group(1)
+
+    bank_match = re.search(
+        r"F57A:\s*IDENTIFIER\s+CODE\s*([A-Z0-9]{8,11})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if bank_match is not None:
+        fields["swiftCode"] = bank_match.group(1).upper()
+
+    name_match = re.search(
+        r"F59A:\s*BENEFICIARY\s+ACCOUNT\s*[A-Za-z0-9]+\s*NAME\s*&\s*ADDRESS\s*(.+?)\s+F70:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if name_match is not None:
+        fields["beneficiaryName"] = normalize_spaces(name_match.group(1))
+
+
+def parse_swift_invoice_reference(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"F70:\s*REMMITANCE\s+INFORMATION\s*INV\s+([A-Za-z0-9]+)\s*[-–]\s*(\d{4})\s+DD\s+(\d{4})-(\d{2})-(\d{2})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    fields["invoiceNumber"] = f"{match.group(1)}-{match.group(2)}"
+    fields["invoiceDate"] = f"{match.group(3)}-{match.group(4)}-{match.group(5)}"
 
 def parse_common_request_metadata(raw_text: str, fields: dict, warnings: list[str]) -> None:
     # Номер и дата заявки/поручения встречаются почти во всех шаблонах.
@@ -108,7 +342,7 @@ def parse_request_number_and_date(raw_text: str, fields: dict, warnings: list[st
     if date_match is not None:
         fields["requestDate"] = normalize_date(date_match.group(1), warnings, "Request date")
 
-    if fields["requestNumber"] is None:
+    if fields["requestNumber"] is None and detect_document_type(raw_text) not in {"supplier_invoice", "swift_mt103", "subagent_act_report"}:
         warnings.append("Request number was not found.")
 
 
@@ -154,6 +388,118 @@ def parse_agency_application(raw_text: str, fields: dict, warnings: list[str]) -
     parse_agency_application_agency_fee(raw_text, fields, warnings)
     parse_agency_application_total_amount(raw_text, fields, warnings)
 
+def parse_supplier_invoice(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    parse_supplier_invoice_number_and_date(raw_text, fields, warnings)
+    parse_supplier_invoice_payment_amount(raw_text, fields, warnings)
+    parse_supplier_invoice_beneficiary(raw_text, fields)
+    parse_supplier_invoice_bank_details(raw_text, fields)
+
+def parse_supplier_invoice_number_and_date(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    # В этом invoice номер стоит сразу после заголовка INVOICE:
+    # INVOICE
+    # V3 – 2026
+    match = re.search(
+        r"INVOICE\s+([A-Za-z0-9]+)\s*[–-]\s*(\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        warnings.append("Invoice number was not found.")
+    else:
+        fields["invoiceNumber"] = f"{match.group(1)}-{match.group(2)}"
+        fields["requestNumber"] = fields["invoiceNumber"]
+
+    date_match = re.search(
+        r"Date:\s*(\d{2})\s*/\s*(\d{2})\s*/\s*(\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if date_match is None:
+        warnings.append("Invoice date was not found.")
+        return
+
+    date_raw = f"{date_match.group(1)}.{date_match.group(2)}.{date_match.group(3)}"
+    normalized_date = normalize_flexible_date(date_raw)
+
+    if normalized_date is None:
+        warnings.append(f'Invoice date "{date_raw}" could not be normalized.')
+        return
+
+    fields["invoiceDate"] = normalized_date
+    fields["requestDate"] = normalized_date
+
+
+def parse_supplier_invoice_payment_amount(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    # В invoice валюта указана в заголовке колонки: Amount ( USD ),
+    # а сумма в строке Total.
+    currency_match = re.search(
+        r"Amount\s*\(\s*([A-Z]{3})\s*\)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    total_match = re.search(
+        r"Total\s+([0-9][0-9,.\s\u00a0]*)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if currency_match is None or total_match is None:
+        warnings.append("Invoice payment amount and currency were not found.")
+        return
+
+    amount = normalize_supplier_invoice_amount(total_match.group(1))
+
+    if amount is None:
+        warnings.append(f'Invoice payment amount "{total_match.group(1)}" could not be normalized.')
+        return
+
+    fields["paymentAmount"] = amount
+    fields["paymentCurrency"] = currency_match.group(1).upper()
+
+
+def parse_supplier_invoice_beneficiary(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"Bank details:\s*Name:\s*(.+?)\s+Adress:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is None:
+        return
+
+    fields["beneficiaryName"] = normalize_spaces(match.group(1))
+
+
+def parse_supplier_invoice_bank_details(raw_text: str, fields: dict) -> None:
+    bank_match = re.search(
+        r"\bBank:\s*(.+?)\s+Bank\s+adress:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if bank_match is not None:
+        fields["beneficiaryBank"] = normalize_spaces(bank_match.group(1))
+
+    account_match = re.search(
+        r"\bAcc:\s*([A-Za-z0-9]+)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if account_match is not None:
+        fields["beneficiaryAccount"] = normalize_spaces(account_match.group(1))
+
+    swift_match = re.search(
+        r"\bSwift:\s*([A-Z0-9]{8,11})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if swift_match is not None:
+        fields["swiftCode"] = swift_match.group(1).upper()
 
 def parse_agency_application_payment_amount(raw_text: str, fields: dict, warnings: list[str]) -> None:
     # Сначала ищем английскую подпись Payment amount: она обычно ближе к числу.
@@ -428,7 +774,19 @@ def parse_subagent_instruction(raw_text: str, fields: dict, warnings: list[str])
     parse_subagent_agency_fee(raw_text, fields, warnings)
     parse_subagent_total_amount(raw_text, fields, warnings)
     parse_subagent_payment_term(raw_text, fields)
+    parse_subagent_beneficiary_bank(raw_text, fields)
 
+def parse_subagent_beneficiary_bank(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"Beneficiary[’']?s?\s+Bank:\s*(.+?)\s+Bank\s+Address:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is None:
+        return
+
+    fields["beneficiaryBank"] = normalize_spaces(match.group(1))
 
 def parse_subagent_payment_amount(raw_text: str, fields: dict, warnings: list[str]) -> None:
     match = re.search(
@@ -624,8 +982,17 @@ def build_terms_comment(fields: dict) -> None:
 def detect_document_type(raw_text: str) -> str:
     lowered = raw_text.lower()
 
-    # Определяем тип документа по устойчивым фразам, а не по имени файла:
-    # в production имя файла может быть любым.
+    # Важно: акт-отчет тоже содержит "субагентскому соглашению",
+    # поэтому проверяем его раньше subagent_instruction.
+    if "акт-отчет" in lowered or "акт -отчет" in lowered:
+        return "subagent_act_report"
+
+    if "swift mt-103" in lowered or "message header" in lowered and "message text" in lowered:
+        return "swift_mt103"
+
+    if "invoice" in lowered and "bank details" in lowered and "total" in lowered:
+        return "supplier_invoice"
+
     if "субагентскому договору" in lowered or "субагентскому соглашению" in lowered:
         return "subagent_instruction"
 
@@ -806,30 +1173,79 @@ def parse_total_amount(raw_text: str, fields: dict, warnings: list[str]) -> None
     fields["totalAmountRub"] = amount
 
 
-def calculate_confidence(fields: dict) -> float:
-    # confidence показывает долю найденных бизнес-полей.
-    # Это не ML-уверенность, а простой технический индикатор полноты разбора.
-    required_fields = [
-        "requestNumber",
+def calculate_confidence(fields: dict, document_type: str) -> float:
+    # confidence считаем по ожидаемым полям конкретного типа документа.
+    # Это важнее общей формулы: invoice, swift и акт-отчет не обязаны иметь
+    # одинаковый набор финансовых полей.
+    required_by_type = {
+        "supplier_invoice": [
+            "requestNumber",
+            "requestDate",
+            "paymentAmount",
+            "paymentCurrency",
+            "beneficiaryName",
+            "beneficiaryBank",
+            "beneficiaryAccount",
+            "swiftCode",
+            "invoiceNumber",
+            "invoiceDate",
+        ],
+        "swift_mt103": [
+            "requestNumber",
+            "requestDate",
+            "paymentAmount",
+            "paymentCurrency",
+            "beneficiaryName",
+            "beneficiaryAccount",
+            "swiftCode",
+            "invoiceNumber",
+            "invoiceDate",
+            "paymentReference",
+        ],
+        "subagent_act_report": [
+            "requestNumber",
+            "requestDate",
+            "contractNumber",
+            "contractDate",
+            "paymentAmount",
+            "paymentCurrency",
+            "paymentAmountRub",
+            "agencyFeeAmountRub",
+            "totalAmountRub",
+            "invoiceNumber",
+            "invoiceDate",
+            "paymentReference",
+        ],
+    }
+
+    required_fields = required_by_type.get(document_type, [
         "paymentAmount",
         "paymentCurrency",
-        "exchangeRateRaw",
+        "exchangeRate",
         "agencyFeeAmountRub",
-        "paymentAmountRub",
+        "totalAmountRub",
         "executionTermRaw",
-    ]
+        "requestNumber",
+    ])
 
-    found = 0
-
-    for field_name in required_fields:
-        value = fields.get(field_name)
-
-        # paymentAmountRub бывает неявным: в части документов есть только итоговая
-        # рублевая сумма. В таком случае totalAmountRub тоже считаем полезной находкой.
-        if field_name == "paymentAmountRub" and value in (None, ""):
-            value = fields.get("totalAmountRub")
-
-        if value not in (None, ""):
-            found += 1
+    found = sum(1 for field_name in required_fields if fields.get(field_name))
 
     return round(found / len(required_fields), 2)
+
+def normalize_supplier_invoice_amount(value: str) -> str | None:
+    # В invoice сумма "54,472" означает 54 472 USD, а не 54.47.
+    # Поэтому запятые внутри целой части считаем разделителями тысяч.
+    normalized = value.strip()
+    normalized = normalized.replace("\u00a0", " ")
+    normalized = normalized.replace(" ", "")
+
+    if "," in normalized and "." not in normalized:
+        normalized = normalized.replace(",", "")
+        normalized = f"{normalized}.00"
+    else:
+        normalized = normalized.replace(",", "")
+
+    if not re.fullmatch(r"\d+(?:\.\d{1,2})?", normalized):
+        return None
+
+    return normalize_decimal(normalized, scale=2)

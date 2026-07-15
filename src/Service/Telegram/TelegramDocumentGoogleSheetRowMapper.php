@@ -42,11 +42,18 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             $fields['paymentTypeRaw'] ?? null,
             $fields['beneficiaryBank'] ?? null,
 
+            $fields['invoiceNumber'] ?? null,
+            $fields['invoiceDate'] ?? null,
+            $fields['beneficiaryName'] ?? null,
+            $fields['beneficiaryAccount'] ?? null,
+            $fields['swiftCode'] ?? null,
+            $fields['paymentReference'] ?? null,
+
             /*
-             * Сроки пока кладем одним комментарием, как попросил заказчик.
-             * При этом raw-поля остаются в parsedFields, если позже захотим
-             * разнести их по отдельным колонкам.
-             */
+            * Сроки пока кладем одним комментарием, как попросил заказчик.
+            * При этом raw-поля остаются в parsedFields, если позже захотим
+            * разнести их по отдельным колонкам.
+            */
             $fields['termsComment'] ?? null,
 
             $telegramDocument->getParserConfidence(),

@@ -28,6 +28,27 @@ final readonly class TelegramDocumentReviewMessageFactory
             sprintf('Курс: %s', $fields['exchangeRateRaw'] ?? 'нет'),
             sprintf('Вознаграждение: %s руб.', $fields['agencyFeeAmountRub'] ?? 'не найдено'),
             sprintf('Комментарий по срокам: %s', $fields['termsComment'] ?? 'нет'),
+            ($fields['beneficiaryBank'] ?? null) !== null
+                ? sprintf('Банк получателя: %s', $fields['beneficiaryBank'])
+                : null,
+            ($fields['invoiceNumber'] ?? null) !== null
+                ? sprintf('Инвойс: %s', $fields['invoiceNumber'])
+                : null,
+            ($fields['invoiceDate'] ?? null) !== null
+                ? sprintf('Дата инвойса: %s', $fields['invoiceDate'])
+                : null,
+            ($fields['beneficiaryName'] ?? null) !== null
+                ? sprintf('Получатель: %s', $fields['beneficiaryName'])
+                : null,
+            ($fields['beneficiaryAccount'] ?? null) !== null
+                ? sprintf('Счет получателя: %s', $fields['beneficiaryAccount'])
+                : null,
+            ($fields['swiftCode'] ?? null) !== null
+                ? sprintf('SWIFT: %s', $fields['swiftCode'])
+                : null,
+            ($fields['paymentReference'] ?? null) !== null
+                ? sprintf('Референс: %s', $fields['paymentReference'])
+                : null,
             '',
             $telegramDocument->getStatus()->value === 'needs_review'
                 ? 'Проверьте данные. Все равно записать в Google таблицу?'
