@@ -54,6 +54,8 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
         parse_subagent_act_report(raw_text, fields, warnings)
     elif document_type == "application_form":
         parse_agency_application(raw_text, fields, warnings)
+    elif document_type == "subagent_application":
+        parse_subagent_application(raw_text, fields, warnings)
     else:
         parse_payment_amount(raw_text, fields, warnings)
         parse_execution_term(raw_text, fields, warnings)
@@ -69,6 +71,194 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
     confidence = calculate_confidence(fields, document_type)
 
     return fields, warnings, document_type, confidence
+
+def parse_subagent_application(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    parse_subagent_application_payment_amount(raw_text, fields, warnings)
+    parse_subagent_application_invoice(raw_text, fields)
+    parse_subagent_application_beneficiary(raw_text, fields)
+    parse_subagent_application_execution_term(raw_text, fields, warnings)
+    parse_subagent_application_exchange_rate(raw_text, fields, warnings)
+    parse_subagent_application_agency_fee(raw_text, fields, warnings)
+    parse_subagent_application_total_amount(raw_text, fields, warnings)
+    derive_subagent_application_payment_amount_rub(fields)
+
+
+def parse_subagent_application_payment_amount(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"Сумма\s+платежа.*?([0-9][0-9\s\u00a0]*)(?:[,.]\d{2})?\s*([A-Z]{3})",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is None:
+        warnings.append("Subagent application payment amount and currency were not found.")
+        return
+
+    amount = normalize_decimal(f"{match.group(1)},00", scale=2)
+
+    if amount is None:
+        warnings.append(f'Subagent application payment amount "{match.group(1)}" could not be normalized.')
+        return
+
+    fields["paymentAmount"] = amount
+    fields["paymentCurrency"] = match.group(2).upper()
+
+
+def parse_subagent_application_invoice(raw_text: str, fields: dict) -> None:
+    match = re.search(
+        r"Invoice\s+No\.?:\s*([A-Za-z0-9]+)\s+от\s+(\d{2}\.\d{2}\.\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        return
+
+    invoice_number = match.group(1).upper()
+
+    # OCR часто путает нули и буквы O.
+    if invoice_number.startswith("AR"):
+        invoice_number = "AR" + invoice_number[2:].replace("O", "0")
+
+    fields["invoiceNumber"] = invoice_number
+    fields["invoiceDate"] = normalize_flexible_date(match.group(2))
+
+
+def parse_subagent_application_beneficiary(raw_text: str, fields: dict) -> None:
+    name_match = re.search(
+        r"Компания:\s*(.+?)(?:\s+Банковские\s+реквизиты/|\s+Адрес:)",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if name_match is not None:
+        fields["beneficiaryName"] = normalize_spaces(name_match.group(1))
+
+    bank_match = re.search(
+        r"Банк:\s*(.+?)\s+Swift\s+Bic:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if bank_match is not None:
+        fields["beneficiaryBank"] = normalize_spaces(bank_match.group(1))
+
+    swift_match = re.search(
+        r"Swift\s+Bic:\s*([A-Z0-9]{8,11})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if swift_match is not None:
+        fields["swiftCode"] = swift_match.group(1).upper()
+
+    account_match = re.search(
+        r"A/C\s+NO:\s*([0-9]+)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if account_match is not None:
+        fields["beneficiaryAccount"] = account_match.group(1)
+
+
+def parse_subagent_application_execution_term(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"Сроки\s+выполнения\s+поручения\s+Агента\s+(\d{2}\.\d{2}\.\d{4})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        match = re.search(
+            r"Sub-agent\s+up\s+to:\s*(\d{2}\.\d{2}\.\d{4})",
+            raw_text,
+            flags=re.IGNORECASE,
+        )
+
+    if match is None:
+        warnings.append("Subagent application execution term was not found.")
+        return
+
+    fields["executionTermRaw"] = f"до {match.group(1)}"
+    fields["executionDueDate"] = normalize_flexible_date(match.group(1))
+
+
+def parse_subagent_application_exchange_rate(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"Обменный\s+курс\s+([0-9]+[,.]\d+)\s+([A-Z]{3})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        warnings.append("Subagent application exchange rate was not found.")
+        return
+
+    rate = normalize_decimal(match.group(1), scale=8)
+
+    if rate is None:
+        warnings.append(f'Subagent application exchange rate "{match.group(1)}" could not be normalized.')
+        return
+
+    fields["exchangeRate"] = rate
+    fields["exchangeRateRaw"] = normalize_spaces(match.group(0))
+
+
+def parse_subagent_application_agency_fee(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"вознаграждение\s+составляет\s+([0-9][0-9\s\u00a0]*[,.]\d{2})\s*руб",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        warnings.append("Subagent application agency fee was not found.")
+        return
+
+    amount = normalize_decimal(match.group(1), scale=2)
+
+    if amount is None:
+        warnings.append(f'Subagent application agency fee "{match.group(1)}" could not be normalized.')
+        return
+
+    fields["agencyFeeAmountRub"] = amount
+
+
+def parse_subagent_application_total_amount(raw_text: str, fields: dict, warnings: list[str]) -> None:
+    match = re.search(
+        r"в\s+размере\s+([0-9][0-9\s\u00a0]*[,.]\d{2})",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is None:
+        warnings.append("Subagent application total amount was not found.")
+        return
+
+    amount = normalize_decimal(match.group(1), scale=2)
+
+    if amount is None:
+        warnings.append(f'Subagent application total amount "{match.group(1)}" could not be normalized.')
+        return
+
+    fields["totalAmountRub"] = amount
+
+
+def derive_subagent_application_payment_amount_rub(fields: dict) -> None:
+    if not fields.get("totalAmountRub") or not fields.get("agencyFeeAmountRub"):
+        return
+
+    fields["paymentAmountRub"] = bc_sub_money(fields["totalAmountRub"], fields["agencyFeeAmountRub"])
+
+
+def bc_sub_money(left: str, right: str) -> str:
+    # В Python здесь достаточно Decimal, потому что это parser-слой.
+    from decimal import Decimal
+
+    result = Decimal(left) - Decimal(right)
+
+    return f"{result:.2f}"
 
 def parse_subagent_act_report(raw_text: str, fields: dict, warnings: list[str]) -> None:
     parse_subagent_act_report_number_and_date(raw_text, fields, warnings)
@@ -993,6 +1183,14 @@ def detect_document_type(raw_text: str) -> str:
     if "invoice" in lowered and "bank details" in lowered and "total" in lowered:
         return "supplier_invoice"
 
+    if (
+        "заявка" in lowered
+        and "субагентскому договору" in lowered
+        and "агент поручает" in lowered
+        and "субагент принимает" in lowered
+    ):
+        return "subagent_application"
+
     if "субагентскому договору" in lowered or "субагентскому соглашению" in lowered:
         return "subagent_instruction"
 
@@ -1215,6 +1413,25 @@ def calculate_confidence(fields: dict, document_type: str) -> float:
             "invoiceNumber",
             "invoiceDate",
             "paymentReference",
+        ],
+        "subagent_application": [
+            "requestNumber",
+            "requestDate",
+            "contractNumber",
+            "contractDate",
+            "paymentAmount",
+            "paymentCurrency",
+            "paymentAmountRub",
+            "exchangeRate",
+            "agencyFeeAmountRub",
+            "totalAmountRub",
+            "executionTermRaw",
+            "beneficiaryName",
+            "beneficiaryBank",
+            "beneficiaryAccount",
+            "swiftCode",
+            "invoiceNumber",
+            "invoiceDate",
         ],
     }
 

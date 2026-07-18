@@ -9,6 +9,10 @@ WORKDIR /app/parser
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
+        poppler-utils \
+        tesseract-ocr \
+        tesseract-ocr-eng \
+        tesseract-ocr-rus \
     && rm -rf /var/lib/apt/lists/*
 
 COPY parser/ /app/parser/
