@@ -20,12 +20,10 @@ final readonly class TelegramUpdateHandler
         private TelegramDocumentRepository $telegramDocumentRepository,
         private TelegramMessageSender $telegramMessageSender,
         private TelegramBotConfig $telegramBotConfig,
-        private TelegramFileDownloader $telegramFileDownloader,
         private TelegramDocumentFactory $telegramDocumentFactory,
-        private TelegramDocumentParser $telegramDocumentParser,
         private TelegramDocumentReviewMessageFactory $reviewMessageFactory,
         private TelegramDocumentHistoryMessageFactory $historyMessageFactory,
-        private TelegramDocumentBusinessValidator $businessValidator,
+        private TelegramDocumentProcessingService $telegramDocumentProcessingService,
         private TelegramCallbackHandler $telegramCallbackHandler,
     ) {
     }
@@ -189,39 +187,7 @@ final readonly class TelegramUpdateHandler
             return;
         }
 
-        try {
-            $downloadedFile = $this->telegramFileDownloader->download($fileId);
-
-            $telegramDocument->setChecksumSha256($downloadedFile->checksumSha256);
-            $telegramDocument->setSizeBytes($downloadedFile->sizeBytes);
-
-            $this->telegramDocumentParser->parse($telegramDocument, $downloadedFile->contents);
-
-            $validationResult = $this->businessValidator->validate($telegramDocument);
-
-            if (!$validationResult->valid) {
-                $telegramDocument->setStatus(TelegramDocumentStatus::ValidationFailed);
-                $telegramDocument->setValidationErrors($validationResult->errors);
-            }
-        } catch (\Throwable $exception) {
-            $telegramDocument->setStatus(TelegramDocumentStatus::Failed);
-            $telegramDocument->setErrorMessage($exception->getMessage());
-            $telegramDocument->setFailedAt(new \DateTimeImmutable());
-
-            $log->setTelegramDocument($telegramDocument);
-
-            $this->entityManager->persist($telegramDocument);
-            $this->entityManager->flush();
-
-            $this->telegramMessageSender->sendText(
-                $chatId,
-                'Не удалось скачать или обработать файл из Telegram.',
-                $telegramUser,
-                $telegramDocument,
-            );
-
-            return;
-        }
+        $this->telegramDocumentProcessingService->process($telegramDocument);
 
         $log->setTelegramDocument($telegramDocument);
 
