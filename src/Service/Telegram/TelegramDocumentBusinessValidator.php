@@ -104,27 +104,42 @@ final readonly class TelegramDocumentBusinessValidator
     }
 
     /**
-     * Проверяем вознаграждение только если есть сумма в рублях, процент и сумма вознаграждения.
+     * Проверяем вознаграждение только если есть сумма в валюте, курс, процент и сумма вознаграждения.
+     *
+     * Важно: сначала считаем и округляем вознаграждение в валюте,
+     * затем конвертируем его в рубли. Так устроены часть документов:
+     * 16 639.56 EUR * 4% = 665.58 EUR
+     * 665.58 EUR * 89.3296 = 59 456.00 RUB
      *
      * @param array<string, mixed> $fields
      * @param list<string> $errors
      */
     private function validateAgencyFeeAmountRub(array $fields, array &$errors): void
     {
-        if (!$this->hasFields($fields, ['paymentAmountRub', 'agencyFeePercent', 'agencyFeeAmountRub'])) {
+        if (!$this->hasFields($fields, ['paymentAmount', 'exchangeRate', 'agencyFeePercent', 'agencyFeeAmountRub'])) {
             return;
         }
 
-        $paymentAmountRub = $this->decimalField($fields, 'paymentAmountRub', 'Сумма платежа в рублях', 2, $errors);
+        $paymentAmount = $this->decimalField($fields, 'paymentAmount', 'Сумма платежа в валюте', 8, $errors);
+        $exchangeRate = $this->decimalField($fields, 'exchangeRate', 'Курс валюты', 8, $errors);
         $agencyFeePercent = $this->decimalField($fields, 'agencyFeePercent', 'Процент вознаграждения', 8, $errors);
         $agencyFeeAmountRub = $this->decimalField($fields, 'agencyFeeAmountRub', 'Агентское вознаграждение', 2, $errors);
 
-        if ($paymentAmountRub === null || $agencyFeePercent === null || $agencyFeeAmountRub === null) {
+        if (
+            $paymentAmount === null
+            || $exchangeRate === null
+            || $agencyFeePercent === null
+            || $agencyFeeAmountRub === null
+        ) {
             return;
         }
 
+        $calculatedAgencyFeeAmount = $this->roundMoney(
+            bcdiv(bcmul($paymentAmount, $agencyFeePercent, 8), '100', 8),
+        );
+
         $calculatedAgencyFeeAmountRub = $this->roundMoney(
-            bcdiv(bcmul($paymentAmountRub, $agencyFeePercent, 8), '100', 8),
+            bcmul($calculatedAgencyFeeAmount, $exchangeRate, 8),
         );
 
         if (!$this->equals($calculatedAgencyFeeAmountRub, $agencyFeeAmountRub, 2)) {
