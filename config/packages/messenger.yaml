@@ -18,6 +18,7 @@ framework:
 
         routing:
             App\Message\ParseDocumentMessage: async
+            App\Message\ProcessTelegramDocumentMessage: async
 
 when@test:
     framework:

@@ -2,14 +2,14 @@
 
 namespace App\Service\Telegram;
 
-use App\Entity\TelegramDocument;
 use App\Entity\TelegramMessageLog;
-use App\Entity\TelegramUser;
 use App\Enum\Telegram\TelegramDocumentStatus;
 use App\Enum\Telegram\TelegramMessageDirection;
 use App\Enum\Telegram\TelegramMessageStatus;
 use App\Repository\TelegramDocumentRepository;
 use App\Repository\TelegramUserRepository;
+use App\Message\ProcessTelegramDocumentMessage;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Doctrine\ORM\EntityManagerInterface;
 
 final readonly class TelegramUpdateHandler
@@ -21,10 +21,9 @@ final readonly class TelegramUpdateHandler
         private TelegramMessageSender $telegramMessageSender,
         private TelegramBotConfig $telegramBotConfig,
         private TelegramDocumentFactory $telegramDocumentFactory,
-        private TelegramDocumentReviewMessageFactory $reviewMessageFactory,
         private TelegramDocumentHistoryMessageFactory $historyMessageFactory,
-        private TelegramDocumentProcessingService $telegramDocumentProcessingService,
         private TelegramCallbackHandler $telegramCallbackHandler,
+        private MessageBusInterface $messageBus,
     ) {
     }
 
@@ -187,45 +186,18 @@ final readonly class TelegramUpdateHandler
             return;
         }
 
-        $this->telegramDocumentProcessingService->process($telegramDocument);
-
         $log->setTelegramDocument($telegramDocument);
 
         $this->entityManager->persist($telegramDocument);
         $this->entityManager->flush();
 
-        if ($telegramDocument->getStatus() === TelegramDocumentStatus::ValidationFailed) {
-            $this->telegramMessageSender->sendText(
-                $chatId,
-                $this->buildValidationFailedMessage($telegramDocument),
-                $telegramUser,
-                $telegramDocument,
-            );
-
-            return;
-        }
-
-        if (in_array($telegramDocument->getStatus(), [
-            TelegramDocumentStatus::Parsed,
-            TelegramDocumentStatus::NeedsReview,
-        ], true)) {
-            $this->telegramMessageSender->sendText(
-                $chatId,
-                $this->reviewMessageFactory->createText($telegramDocument),
-                $telegramUser,
-                $telegramDocument,
-                $this->reviewMessageFactory->createReplyMarkup($telegramDocument),
-            );
-
-            return;
-        }
+        $this->messageBus->dispatch(new ProcessTelegramDocumentMessage(
+            (string) $telegramDocument->getId(),
+        ));
 
         $this->telegramMessageSender->sendText(
             $chatId,
-            match ($telegramDocument->getStatus()) {
-                TelegramDocumentStatus::Failed => 'Не удалось обработать файл. Проверьте PDF или отправьте другой документ.',
-                default => 'Файл принят в обработку.',
-            },
+            'Файл принят в обработку. Я пришлю результат после проверки.',
             $telegramUser,
             $telegramDocument,
         );
@@ -247,19 +219,5 @@ final readonly class TelegramUpdateHandler
         $log->setPayload($update);
 
         return $log;
-    }
-
-    private function buildValidationFailedMessage(TelegramDocument $telegramDocument): string
-    {
-        $errors = $telegramDocument->getValidationErrors();
-
-        if ($errors === []) {
-            $errors = ['Документ не прошел бизнес-проверку.'];
-        }
-
-        return sprintf(
-            "Документ не прошел проверку.\n\nНайдены ошибки:\n- %s\n\nИсправьте документ и загрузите исправленную версию.",
-            implode("\n- ", $errors),
-        );
     }
 }
