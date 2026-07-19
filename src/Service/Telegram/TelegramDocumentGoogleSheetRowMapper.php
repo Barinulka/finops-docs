@@ -9,9 +9,7 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
     /**
      * Превращает TelegramDocument в строку Google Sheets.
      *
-     * Здесь специально собран порядок колонок.
-     * Если заказчик поменяет структуру таблицы, менять нужно этот класс,
-     * а не GoogleSheetsClient и не writer.
+     * Порядок колонок соответствует листу "Входящие заявки".
      *
      * @return list<string|int|float|bool|null>
      */
@@ -20,44 +18,117 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
         $fields = $telegramDocument->getParsedFields();
 
         return [
-            $telegramDocument->getCreatedAt()?->format('Y-m-d H:i:s'),
-            (string) $telegramDocument->getId(),
-            $telegramDocument->getOriginalFilename(),
-
-            $fields['requestNumber'] ?? null,
-            $fields['requestDate'] ?? null,
-            $fields['contractNumber'] ?? null,
-            $fields['contractDate'] ?? null,
-
-            $fields['paymentAmount'] ?? null,
-            $fields['paymentCurrency'] ?? null,
-            $fields['paymentAmountRub'] ?? null,
-
-            $fields['exchangeRate'] ?? null,
-            $fields['agencyFeePercent'] ?? null,
-            $fields['agencyFeeAmountRub'] ?? null,
-            $fields['totalAmountRub'] ?? null,
-
-            $fields['paymentType'] ?? null,
-            $fields['paymentTypeRaw'] ?? null,
-            $fields['beneficiaryBank'] ?? null,
-
-            $fields['invoiceNumber'] ?? null,
-            $fields['invoiceDate'] ?? null,
-            $fields['beneficiaryName'] ?? null,
-            $fields['beneficiaryAccount'] ?? null,
-            $fields['swiftCode'] ?? null,
-            $fields['paymentReference'] ?? null,
-
-            /*
-            * Сроки пока кладем одним комментарием, как попросил заказчик.
-            * При этом raw-поля остаются в parsedFields, если позже захотим
-            * разнести их по отдельным колонкам.
-            */
-            $fields['termsComment'] ?? null,
-
-            $telegramDocument->getParserConfidence(),
-            $telegramDocument->getStatus()->label(),
+            null, // № п/п - таблица заполняет сама
+            $this->buildDocumentNumber($fields), // Номер пп/заявки
+            null, // Флаг недостаточности данных - таблица заполняет сама
+            $this->buildComment($telegramDocument), // Комментарий
+            null, // Флаг оплаты - таблица заполняет сама
+            null, // Дата оплаты - факт оплаты из заявок не берем
+            null, // Клиент - пока не парсим стабильно
+            $fields['beneficiaryName'] ?? null, // Получатель
+            null, // Страна получателя - пока не парсим стабильно
+            $fields['requestDate'] ?? null, // Дата заявки
+            $this->extractBusinessDays($fields['executionTermRaw'] ?? null), // Срок исполнения заявки
+            $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null), // Тип оплаты
+            $this->extractBusinessDays($fields['paymentTermRaw'] ?? null), // Срок оплаты по заявке
+            $fields['paymentCurrency'] ?? null, // Валюта заявки
+            $fields['paymentAmount'] ?? null, // Сумма заявки в валюте
+            $this->formatPercent($fields['agencyFeePercent'] ?? null), // СИК-СЕС %
+            null, // Доп. платеж
+            null, // Валюта доп. платежа
+            $fields['paymentAmountRub'] ?? null, // Сумма заявки в РУБ
+            $fields['agencyFeeAmountRub'] ?? null, // СИК-СЕС вознагражд-е в РУБ
+            null, // Доп. платеж в РУБ
+            $fields['totalAmountRub'] ?? null, // Общая сумма заявки + вознаграждения в РУБ
+            $fields['totalAmountRub'] ?? null, // Общая сумма фикс. в заявке в РУБ
+            null, // Вознаграждение клиента в РУБ
+            null, // Котировка ЦБ заявки - таблица считает сама
+            null, // Котировка ЦБ доп. расхода - таблица считает сама
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function buildDocumentNumber(array $fields): ?string
+    {
+        $requestNumber = $fields['requestNumber'] ?? null;
+
+        if ($requestNumber === null || $requestNumber === '') {
+            return null;
+        }
+
+        return sprintf('Заявка %s', (string) $requestNumber);
+    }
+
+    private function buildComment(TelegramDocument $telegramDocument): ?string
+    {
+        $fields = $telegramDocument->getParsedFields();
+        $parts = [];
+
+        if (($fields['termsComment'] ?? null) !== null && $fields['termsComment'] !== '') {
+            $parts[] = (string) $fields['termsComment'];
+        }
+
+        $validationErrors = $telegramDocument->getValidationErrors();
+
+        if ($validationErrors !== []) {
+            $parts[] = sprintf("Проблемы проверки:\n- %s", implode("\n- ", $validationErrors));
+        }
+
+        if ($telegramDocument->getOriginalFilename()) {
+            $parts[] = sprintf('Файл: %s', $telegramDocument->getOriginalFilename());
+        }
+
+        if ($parts === []) {
+            return null;
+        }
+
+        return implode("\n\n", $parts);
+    }
+
+    private function extractBusinessDays(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        if (preg_match('/(\d+)\s*(?:рабочих|рабочего|раб\.?|working|business)?\s*(?:дней|дня|день|days?|day)?/iu', (string) $value, $match) !== 1) {
+            return null;
+        }
+
+        return (int) $match[1];
+    }
+
+    private function mapPaymentType(mixed $paymentType, mixed $paymentTypeRaw): ?string
+    {
+        $value = strtolower((string) ($paymentType ?: $paymentTypeRaw));
+
+        if ($value === '') {
+            return null;
+        }
+
+        if (str_contains($value, 'prepayment') || str_contains($value, 'предоплат')) {
+            return 'Предоплата';
+        }
+
+        if (str_contains($value, 'postpayment') || str_contains($value, 'постоплат')) {
+            return 'Постоплата';
+        }
+
+        if (str_contains($value, 'term') || str_contains($value, 'within') || str_contains($value, 'течение')) {
+            return 'В срок';
+        }
+
+        return (string) ($paymentTypeRaw ?: $paymentType);
+    }
+
+    private function formatPercent(mixed $value): ?string
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        return sprintf('%s%%', str_replace('.', ',', rtrim(rtrim((string) $value, '0'), '.')));
     }
 }

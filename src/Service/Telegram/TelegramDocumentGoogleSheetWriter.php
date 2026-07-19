@@ -17,7 +17,6 @@ final readonly class TelegramDocumentGoogleSheetWriter
         private GoogleSheetsConfig $googleSheetsConfig,
         private TelegramDocumentGoogleSheetRowMapper $rowMapper,
         private EntityManagerInterface $entityManager,
-        private TelegramDocumentBusinessValidator $businessValidator,
     ) {
     }
 
@@ -33,30 +32,12 @@ final readonly class TelegramDocumentGoogleSheetWriter
         if (!in_array($telegramDocument->getStatus(), [
             TelegramDocumentStatus::Parsed,
             TelegramDocumentStatus::NeedsReview,
+            TelegramDocumentStatus::ValidationFailed,
         ], true)) {
             throw new \InvalidArgumentException(sprintf(
                 'Telegram document with status "%s" cannot be written to Google Sheets.',
                 $telegramDocument->getStatus()->value,
             ));
-        }
-
-        $validationResult = $this->businessValidator->validate($telegramDocument);
-
-        if (!$validationResult->valid) {
-            $telegramDocument->setStatus(TelegramDocumentStatus::ValidationFailed);
-            $telegramDocument->setValidationErrors($validationResult->errors);
-
-            $log = new GoogleSheetAppendLog();
-            $log->setTelegramDocument($telegramDocument);
-            $log->setSpreadsheetId($this->googleSheetsConfig->spreadsheetId);
-            $log->setSheetName($this->googleSheetsConfig->sheetName);
-            $log->setStatus(GoogleSheetAppendStatus::Failed);
-            $log->setErrorMessage(implode("\n", $validationResult->errors));
-
-            $this->entityManager->persist($log);
-            $this->entityManager->flush();
-
-            return $log;
         }
 
         $row = $this->rowMapper->map($telegramDocument);
