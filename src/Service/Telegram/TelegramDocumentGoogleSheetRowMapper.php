@@ -36,12 +36,12 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             $this->formatPercent($fields['agencyFeePercent'] ?? null), // СИК-СЕС %
             null, // Доп. платеж
             null, // Валюта доп. платежа
-            $fields['paymentAmountRub'] ?? null, // Сумма заявки в РУБ
-            $fields['agencyFeeAmountRub'] ?? null, // СИК-СЕС вознагражд-е в РУБ
-            null, // Доп. платеж в РУБ
-            $fields['totalAmountRub'] ?? null, // Общая сумма заявки + вознаграждения в РУБ
-            $fields['totalAmountRub'] ?? null, // Общая сумма фикс. в заявке в РУБ
-            null, // Вознаграждение клиента в РУБ
+            $fields['paymentAmountRub'] ?? '0.00', // Сумма заявки в РУБ
+            $fields['agencyFeeAmountRub'] ?? '0.00', // СИК-СЕС вознагражд-е в РУБ
+            '0.00', // Доп. платеж в РУБ
+            $fields['totalAmountRub'] ?? '0.00', // Общая сумма заявки + вознаграждения в РУБ
+            $fields['totalAmountRub'] ?? '0.00', // Общая сумма фикс. в заявке в РУБ
+            '0.00', // Вознаграждение клиента в РУБ
             null, // Котировка ЦБ заявки - таблица считает сама
             null, // Котировка ЦБ доп. расхода - таблица считает сама
         ];
@@ -93,11 +93,21 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             return null;
         }
 
-        if (preg_match('/(\d+)\s*(?:рабочих|рабочего|раб\.?|working|business)?\s*(?:дней|дня|день|days?|day)?/iu', (string) $value, $match) !== 1) {
-            return null;
+        $text = (string) $value;
+
+        if (preg_match('/(\d+)\s*\([^)]*\)\s*(?:рабочего|рабочих|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
         }
 
-        return (int) $match[1];
+        if (preg_match('/(\d+)\s*(?:рабочего|рабочих|раб\.?|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        if (preg_match('/(\d+)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        return null;
     }
 
     private function mapPaymentType(mixed $paymentType, mixed $paymentTypeRaw): ?string
