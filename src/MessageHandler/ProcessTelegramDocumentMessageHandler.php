@@ -59,6 +59,7 @@ final readonly class ProcessTelegramDocumentMessageHandler
                 $telegramUser,
                 $telegramDocument,
                 $this->reviewMessageFactory->createReplyMarkup($telegramDocument),
+                'HTML',
             );
 
             return;

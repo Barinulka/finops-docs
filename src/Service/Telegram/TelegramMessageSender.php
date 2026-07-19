@@ -26,6 +26,7 @@ final readonly class TelegramMessageSender
         ?TelegramUser $telegramUser = null,
         ?TelegramDocument $telegramDocument = null,
         ?array $replyMarkup = null,
+        ?string $parseMode = null,
     ): void {
         $log = new TelegramMessageLog();
         $log->setChatId($chatId);
@@ -37,10 +38,11 @@ final readonly class TelegramMessageSender
             'chat_id' => (string) $chatId,
             'text' => $text,
             'reply_markup' => $replyMarkup,
+            'parse_mode' => $parseMode,
         ]);
 
         try {
-            $response = $this->telegramBotClient->sendMessage($chatId, $text, $replyMarkup);
+            $response = $this->telegramBotClient->sendMessage($chatId, $text, $replyMarkup, $parseMode);
 
             $log->setStatus(TelegramMessageStatus::Sent);
             $log->setResponsePayload($response);

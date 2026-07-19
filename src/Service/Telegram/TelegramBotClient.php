@@ -20,13 +20,25 @@ final readonly class TelegramBotClient
      *
      * @return array<string, mixed>
      */
-    public function sendMessage(string|int $chatId, string $text, ?array $replyMarkup = null): array
-    {
+    public function sendMessage(
+        string|int $chatId,
+        string $text,
+        ?array $replyMarkup = null,
+        ?string $parseMode = null,
+    ): array {
         $payload = [
             'chat_id' => (string) $chatId,
             'text' => $text,
             'disable_web_page_preview' => true,
         ];
+
+        /*
+         * parse_mode нужен для форматирования сообщений.
+         * По умолчанию не передаем, чтобы старые plain-text сообщения не поменяли поведение.
+         */
+        if ($parseMode !== null) {
+            $payload['parse_mode'] = $parseMode;
+        }
 
         /*
          * reply_markup - стандартный Telegram-механизм для inline-кнопок.
