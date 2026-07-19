@@ -3,19 +3,25 @@
 namespace App\Service\Telegram;
 
 use App\Entity\TelegramDocument;
+use App\Enum\Telegram\TelegramDocumentStatus;
 
 final readonly class TelegramDocumentReviewMessageFactory
 {
     public function createText(TelegramDocument $telegramDocument): string
     {
         $fields = $telegramDocument->getParsedFields();
+        $validationErrors = $telegramDocument->getValidationErrors();
+        $requiresReview = in_array($telegramDocument->getStatus(), [
+            TelegramDocumentStatus::NeedsReview,
+            TelegramDocumentStatus::ValidationFailed,
+        ], true);
 
         /*
          * Это сообщение показывает пользователю, что именно будет записано.
          * Держим формат коротким: Telegram - не админка.
          */
         return implode("\n", array_filter([
-            $telegramDocument->getStatus()->value === 'needs_review'
+            $requiresReview
                 ? 'Документ распарсен, но требует проверки.'
                 : 'Документ распарсен.',
             '',
@@ -50,7 +56,13 @@ final readonly class TelegramDocumentReviewMessageFactory
                 ? sprintf('Референс: %s', $fields['paymentReference'])
                 : null,
             '',
-            $telegramDocument->getStatus()->value === 'needs_review'
+            $validationErrors !== []
+                ? sprintf("Проблемы проверки:\n- %s", implode("\n- ", $validationErrors))
+                : null,
+            $validationErrors !== []
+                ? ''
+                : null,
+            $requiresReview
                 ? 'Проверьте данные. Все равно записать в Google таблицу?'
                 : 'Записать данные в Google таблицу?',
         ], static fn (?string $line): bool => $line !== null));
@@ -63,11 +75,16 @@ final readonly class TelegramDocumentReviewMessageFactory
     {
         $id = (string) $telegramDocument->getId();
 
+        $requiresReview = in_array($telegramDocument->getStatus(), [
+            TelegramDocumentStatus::NeedsReview,
+            TelegramDocumentStatus::ValidationFailed,
+        ], true);
+
         return [
             'inline_keyboard' => [
                 [
                     [
-                        'text' => $telegramDocument->getStatus()->value === 'needs_review'
+                        'text' => $requiresReview
                             ? 'Все равно записать'
                             : 'Записать в таблицу',
                         'callback_data' => sprintf('write_to_sheet:%s', $id),

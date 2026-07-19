@@ -48,20 +48,10 @@ final readonly class ProcessTelegramDocumentMessageHandler
             return;
         }
 
-        if ($telegramDocument->getStatus() === TelegramDocumentStatus::ValidationFailed) {
-            $this->telegramMessageSender->sendText(
-                $chatId,
-                $this->buildValidationFailedMessage($telegramDocument),
-                $telegramUser,
-                $telegramDocument,
-            );
-
-            return;
-        }
-
         if (in_array($telegramDocument->getStatus(), [
             TelegramDocumentStatus::Parsed,
             TelegramDocumentStatus::NeedsReview,
+            TelegramDocumentStatus::ValidationFailed,
         ], true)) {
             $this->telegramMessageSender->sendText(
                 $chatId,
@@ -82,20 +72,6 @@ final readonly class ProcessTelegramDocumentMessageHandler
             },
             $telegramUser,
             $telegramDocument,
-        );
-    }
-
-    private function buildValidationFailedMessage(TelegramDocument $telegramDocument): string
-    {
-        $errors = $telegramDocument->getValidationErrors();
-
-        if ($errors === []) {
-            $errors = ['Документ не прошел бизнес-проверку.'];
-        }
-
-        return sprintf(
-            "Документ не прошел проверку.\n\nНайдены ошибки:\n- %s\n\nИсправьте документ и загрузите исправленную версию.",
-            implode("\n- ", $errors),
         );
     }
 }

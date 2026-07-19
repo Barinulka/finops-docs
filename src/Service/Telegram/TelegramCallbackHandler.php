@@ -98,6 +98,7 @@ final readonly class TelegramCallbackHandler
         if (!in_array($telegramDocument->getStatus(), [
             TelegramDocumentStatus::Parsed,
             TelegramDocumentStatus::NeedsReview,
+            TelegramDocumentStatus::ValidationFailed,
         ], true)) {
             $this->telegramBotClient->answerCallbackQuery($callbackQueryId, 'Документ нельзя записать.');
 
