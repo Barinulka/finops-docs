@@ -133,6 +133,36 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
         return (string) ($paymentTypeRaw ?: $paymentType);
     }
 
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveAgencyFeePercent(array $fields): mixed
+    {
+        if (($fields['agencyFeePercent'] ?? null) !== null && $fields['agencyFeePercent'] !== '') {
+            return $fields['agencyFeePercent'];
+        }
+
+        $paymentAmount = $this->decimalToFloat($fields['paymentAmount'] ?? null);
+        $exchangeRate = $this->decimalToFloat($fields['exchangeRate'] ?? null);
+        $agencyFeeRub = $this->decimalToFloat($fields['agencyFeeAmountRub'] ?? null);
+
+        if ($paymentAmount === null || $paymentAmount <= 0.0) {
+            return null;
+        }
+
+        if ($exchangeRate === null || $exchangeRate <= 0.0) {
+            return null;
+        }
+
+        if ($agencyFeeRub === null || $agencyFeeRub <= 0.0) {
+            return null;
+        }
+
+        $agencyFeeInCurrency = $agencyFeeRub / $exchangeRate;
+
+        return round(($agencyFeeInCurrency / $paymentAmount) * 100, 4);
+    }
+
     private function formatPercent(mixed $value): ?string
     {
         if ($value === null || $value === '') {
@@ -155,18 +185,18 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
         return array_filter([
             'B' => $this->buildDocumentNumber($fields),
             'D' => null, // $this->buildComment($telegramDocument), // пока комментарий не пишем
-            'G' => null, // Клиент - позже начнем парсить
+            'G' => $fields['clientName'] ?? null,
             'H' => $fields['beneficiaryName'] ?? null,
-            'I' => null, // Страна получателя - позже начнем парсить
+            'I' => $fields['beneficiaryCountry'] ?? null,
             'J' => $fields['requestDate'] ?? null,
             'K' => $this->extractBusinessDays($fields['executionTermRaw'] ?? null),
             'L' => $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null),
             'M' => $this->extractBusinessDays($fields['paymentTermRaw'] ?? null),
             'N' => $fields['paymentCurrency'] ?? null,
             'O' => $this->decimalToFloat($fields['paymentAmount'] ?? null),
-            'P' => $this->formatPercent($fields['agencyFeePercent'] ?? null),
-            'Q' => null, // Доп. платеж
-            'R' => null, // Валюта доп. платежа
+            'P' => $this->formatPercent($this->resolveAgencyFeePercent($fields)),
+            'Q' => $this->decimalToFloat($fields['extraPaymentAmount'] ?? null),
+            'R' => $fields['extraPaymentCurrency'] ?? null,
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
     }
 

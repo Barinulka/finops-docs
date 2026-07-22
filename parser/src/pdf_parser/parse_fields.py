@@ -31,16 +31,23 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
         "beneficiaryBank": None,
         "invoiceNumber": None,
         "invoiceDate": None,
+        "clientName": None,
         "beneficiaryName": None,
+        "beneficiaryCountry": None,
         "beneficiaryAccount": None,
         "swiftCode": None,
         "paymentReference": None,
+        "extraPaymentAmount": None,
+        "extraPaymentCurrency": None,
         "termsComment": None,
     }
     warnings: list[str] = []
 
     document_type = detect_document_type(raw_text)
     parse_common_request_metadata(raw_text, fields, warnings)
+    parse_common_client_name(raw_text, fields)
+    parse_common_beneficiary_country(raw_text, fields)
+    parse_common_extra_payment(raw_text, fields)
 
     # У каждого шаблона PDF свои формулировки, поэтому держим отдельные ветки.
     # Общая ветка в else сейчас покрывает ASSTRA-заявки.
@@ -76,9 +83,11 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
 
 def parse_subagent_application(raw_text: str, fields: dict, warnings: list[str]) -> None:
     parse_subagent_application_contract(raw_text, fields)
+    parse_subagent_application_client(raw_text, fields)
     parse_subagent_application_payment_amount(raw_text, fields, warnings)
     parse_subagent_application_invoice(raw_text, fields)
     parse_subagent_application_beneficiary(raw_text, fields)
+    parse_common_beneficiary_country(raw_text, fields)
     parse_subagent_application_execution_term(raw_text, fields, warnings)
     parse_subagent_application_exchange_rate(raw_text, fields, warnings)
     parse_subagent_application_agency_fee_percent(raw_text, fields)
@@ -86,6 +95,22 @@ def parse_subagent_application(raw_text: str, fields: dict, warnings: list[str])
     parse_subagent_application_total_amount(raw_text, fields, warnings)
     derive_subagent_application_payment_amount_rub(fields)
 
+def parse_subagent_application_client(raw_text: str, fields: dict) -> None:
+    if fields.get("clientName"):
+        return
+
+    match = re.search(
+        r"For\s+and\s+on\s+behalf\s+of\s+(.+?)(?:\n|\()",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is not None:
+        client_name = normalize_spaces(match.group(1))
+        client_name = re.sub(r"^[^A-Za-zА-Яа-я]+", "", client_name)
+        client_name = re.sub(r"^(?:Ky|Ku)\s*>\s*", "", client_name, flags=re.IGNORECASE)
+
+        fields["clientName"] = client_name
 
 def parse_subagent_application_contract(raw_text: str, fields: dict) -> None:
     match = re.search(
@@ -1153,25 +1178,60 @@ def parse_agency_application_payment_type(raw_text: str, fields: dict) -> None:
 
 
 def parse_agency_application_beneficiary_bank(raw_text: str, fields: dict) -> None:
-    # В банковских реквизитах встречается строка:
-    # "Name of Bank: International Asset Bank Swift Code: ..."
-    match = re.search(
-        r"Name\s+of\s+Bank:\s*(.+?)\s+Swift\s+Code:",
+    # Блок "Получатель платежа и банковские реквизиты" в заявках может быть без явных
+    # подписей Beneficiary Name / Account. Поэтому сначала вырезаем весь блок, а потом
+    # достаем из него получателя, банк, счет и SWIFT.
+    block_match = re.search(
+        r"(?:Получател\s*ь\s+платежа.*?Bank\s+details)\s+(.+?)\s+Сроки\s+выполнения",
         raw_text,
         flags=re.IGNORECASE | re.DOTALL,
     )
 
-    if match is None:
-        match = re.search(
-            r"(?:Банк\s+получателя|Beneficiary[’']?s?\s+Bank):\s*(.+?)(?:\n|Swift|SWIFT|Bank Address|Address:)",
-            raw_text,
+    block = block_match.group(1) if block_match is not None else raw_text
+
+    if fields.get("beneficiaryName") is None:
+        name_match = re.search(
+            r"^\s*(?:Beneficiary\s+Name:\s*)?(.+?)\s+(?:Address:|Beneficiary\s+Address:|Name\s+of\s+Bank:|Beneficiary[’']?s?\s+Bank:)",
+            block,
             flags=re.IGNORECASE | re.DOTALL,
         )
 
-    if match is None:
-        return
+        if name_match is not None:
+            fields["beneficiaryName"] = normalize_spaces(name_match.group(1))
 
-    fields["beneficiaryBank"] = normalize_spaces(match.group(1))
+    bank_match = re.search(
+        r"Name\s+of\s+Bank:\s*(.+?)\s+Swift\s+Code:",
+        block,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if bank_match is None:
+        bank_match = re.search(
+            r"(?:Банк\s+получателя|Beneficiary[’']?s?\s+Bank):\s*(.+?)(?:\n|Swift|SWIFT|Bank Address|Address:)",
+            block,
+            flags=re.IGNORECASE | re.DOTALL,
+        )
+
+    if bank_match is not None:
+        fields["beneficiaryBank"] = normalize_spaces(bank_match.group(1))
+
+    swift_match = re.search(
+        r"(?:Swift\s+Code|Swift|SWIFT):\s*([A-Z0-9]{8,11})",
+        block,
+        flags=re.IGNORECASE,
+    )
+
+    if swift_match is not None:
+        fields["swiftCode"] = swift_match.group(1).upper()
+
+    account_match = re.search(
+        r"(?:Account\s+No|Account\s+number|A/C\s+NO):\s*([A-Z0-9\s]+)",
+        block,
+        flags=re.IGNORECASE,
+    )
+
+    if account_match is not None:
+        fields["beneficiaryAccount"] = re.sub(r"\s+", "", account_match.group(1))
 
 
 def parse_agency_application_agency_fee(raw_text: str, fields: dict, warnings: list[str]) -> None:
@@ -1828,6 +1888,131 @@ def parse_total_amount(raw_text: str, fields: dict, warnings: list[str]) -> None
 
     fields["totalAmountRub"] = amount
 
+def parse_common_client_name(raw_text: str, fields: dict) -> None:
+    if fields.get("clientName"):
+        return
+
+    match = re.search(
+        r"Принципал:\s*(.+?)\s+Агент:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is not None:
+        fields["clientName"] = normalize_spaces(match.group(1))
+        return
+
+    match = re.search(
+        r"Principal:\s*(.+?)\s+Agent:",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is not None:
+        fields["clientName"] = normalize_spaces(match.group(1)).strip('"')
+
+
+def parse_common_beneficiary_country(raw_text: str, fields: dict) -> None:
+    if fields.get("beneficiaryCountry"):
+        return
+
+    match = re.search(
+        r"Country:\s*([A-Za-zА-Яа-я .'-]+)",
+        raw_text,
+        flags=re.IGNORECASE,
+    )
+
+    if match is not None:
+        fields["beneficiaryCountry"] = normalize_country(match.group(1))
+        return
+
+    address_match = re.search(
+        r"(?:Beneficiary\s+Address|Address|Адрес):\s*(.+?)(?:Beneficiary|Bank\s+details|Банковские\s+реквизиты|Банк:|Name\s+of\s+Bank|Account|Swift|SWIFT|A/C\s+NO)",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if address_match is None:
+        return
+
+    address = normalize_spaces(address_match.group(1))
+    fields["beneficiaryCountry"] = guess_country_from_text(address)
+
+    if fields.get("beneficiaryCountry"):
+        return
+
+    beneficiary_name = fields.get("beneficiaryName")
+
+    if beneficiary_name:
+        name_position = raw_text.lower().find(str(beneficiary_name).lower())
+
+        if name_position >= 0:
+            window = raw_text[name_position:name_position + 500]
+            guessed_country = guess_country_from_text(window)
+
+            if guessed_country is not None:
+                fields["beneficiaryCountry"] = guessed_country
+
+
+def parse_common_extra_payment(raw_text: str, fields: dict) -> None:
+    if fields.get("extraPaymentAmount") or fields.get("extraPaymentCurrency"):
+        return
+
+    match = re.search(
+        r"(?:доп\.?\s*платеж|дополнительн\w+\s+(?:платеж|расход)|additional\s+(?:payment|expense))"
+        r".*?([0-9][0-9\s\u00a0.,]*\d)\s*(EUR|USD|CNY|GBP|AED|TRY|RUB|руб)",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if match is None:
+        return
+
+    amount = normalize_decimal(match.group(1), scale=2)
+
+    if amount is None:
+        return
+
+    currency = match.group(2).upper()
+
+    if currency == "РУБ":
+        currency = "RUB"
+
+    fields["extraPaymentAmount"] = amount
+    fields["extraPaymentCurrency"] = currency
+
+
+def guess_country_from_text(text: str) -> str | None:
+    country_map = {
+        "turkey": "Turkey",
+        "türkiye": "Turkey",
+        "czech republic": "Czech Republic",
+        "china": "China",
+        "hong kong": "Hong Kong",
+        "bulgaria": "Bulgaria",
+        "switzerland": "Switzerland",
+        "maldives": "Maldives",
+        "kocaeli": "Turkey",
+    }
+
+    lowered = text.lower()
+
+    for needle, country in country_map.items():
+        if needle in lowered:
+            return country
+
+    return None
+
+
+def normalize_country(value: str) -> str:
+    value = normalize_spaces(value).strip(" .,")
+
+    mapped = guess_country_from_text(value)
+
+    if mapped is not None:
+        return mapped
+
+    return value
 
 def calculate_confidence(fields: dict, document_type: str) -> float:
     # confidence считаем по ожидаемым полям конкретного типа документа.
