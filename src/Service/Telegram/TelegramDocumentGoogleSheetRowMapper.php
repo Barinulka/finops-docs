@@ -141,4 +141,32 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
 
         return sprintf('%s%%', str_replace('.', ',', rtrim(rtrim((string) $value, '0'), '.')));
     }
+
+    /**
+     * Возвращает только те колонки, которые мы имеем право заполнять.
+     * Формульные и автоматические колонки сюда не добавляем.
+     *
+     * @return array<string, string|int|float|bool|null>
+     */
+    public function mapCells(TelegramDocument $telegramDocument): array
+    {
+        $fields = $telegramDocument->getParsedFields();
+
+        return array_filter([
+            'B' => $this->buildDocumentNumber($fields),
+            'D' => $this->buildComment($telegramDocument),
+            'G' => null, // Клиент - позже начнем парсить
+            'H' => $fields['beneficiaryName'] ?? null,
+            'I' => null, // Страна получателя - позже начнем парсить
+            'J' => $fields['requestDate'] ?? null,
+            'K' => $this->extractBusinessDays($fields['executionTermRaw'] ?? null),
+            'L' => $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null),
+            'M' => $this->extractBusinessDays($fields['paymentTermRaw'] ?? null),
+            'N' => $fields['paymentCurrency'] ?? null,
+            'O' => $fields['paymentAmount'] ?? null,
+            'P' => $this->formatPercent($fields['agencyFeePercent'] ?? null),
+            'Q' => null, // Доп. платеж
+            'R' => null, // Валюта доп. платежа
+        ], static fn (mixed $value): bool => $value !== null && $value !== '');
+    }
 }

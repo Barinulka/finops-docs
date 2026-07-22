@@ -72,6 +72,97 @@ final readonly class GoogleSheetsClient
     }
 
     /**
+     * Дописывает строку, заполняя только конкретные колонки.
+     * Остальные колонки строки не отправляются в Google API и не затирают формулы.
+     *
+     * @param array<string, string|int|float|bool|null> $cellsByColumn
+     *
+     * @return array<string, mixed>
+     */
+    public function appendSparseRow(array $cellsByColumn): array
+    {
+        $cellsByColumn = array_filter(
+            $cellsByColumn,
+            static fn (string|int|float|bool|null $value): bool => $value !== null && $value !== '',
+        );
+
+        if ($cellsByColumn === []) {
+            throw new \InvalidArgumentException('Google Sheets cells must not be empty.');
+        }
+
+        $client = $this->createClient();
+        $service = new Sheets($client);
+
+        $nextRowNumber = $this->resolveNextRowNumber($service);
+
+        $data = [];
+
+        foreach ($cellsByColumn as $column => $value) {
+            $data[] = new ValueRange([
+                'range' => sprintf('%s!%s%d', $this->quoteSheetName(), $column, $nextRowNumber),
+                'values' => [
+                    [$value],
+                ],
+            ]);
+        }
+
+        $body = new Sheets\BatchUpdateValuesRequest([
+            'valueInputOption' => 'USER_ENTERED',
+            'data' => $data,
+        ]);
+
+        $response = $service->spreadsheets_values->batchUpdate(
+            $this->config->spreadsheetId,
+            $body,
+        );
+
+        $responseData = $response->toSimpleObject();
+
+        if ($responseData === null) {
+            return [];
+        }
+
+        return json_decode(
+            json_encode($responseData, JSON_THROW_ON_ERROR),
+            true,
+            flags: JSON_THROW_ON_ERROR,
+        );
+    }
+
+    private function createClient(): Client
+    {
+        $client = new Client();
+        $client->setApplicationName('CRM Telegram Sheets Writer');
+        $client->setScopes([
+            Sheets::SPREADSHEETS,
+        ]);
+        $client->setAuthConfig($this->config->credentialsPath);
+
+        return $client;
+    }
+
+    private function resolveNextRowNumber(Sheets $service): int
+    {
+        $response = $service->spreadsheets_values->get(
+            $this->config->spreadsheetId,
+            sprintf('%s!B:B', $this->quoteSheetName()),
+        );
+
+        $values = $response->getValues();
+
+        if ($values === null || $values === []) {
+            return 1;
+        }
+
+        return count($values) + 1;
+    }
+
+    private function quoteSheetName(): string
+    {
+        return sprintf("'%s'", str_replace("'", "''", $this->config->sheetName));
+    }
+
+    /**
      * @param list<string|int|float|bool|null> $row
      *
      * @return list<string|int|float|bool>

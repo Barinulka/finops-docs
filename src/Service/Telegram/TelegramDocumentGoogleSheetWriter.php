@@ -40,20 +40,20 @@ final readonly class TelegramDocumentGoogleSheetWriter
             ));
         }
 
-        $row = $this->rowMapper->map($telegramDocument);
+        $cells = $this->rowMapper->mapCells($telegramDocument);
 
         $log = new GoogleSheetAppendLog();
         $log->setTelegramDocument($telegramDocument);
         $log->setSpreadsheetId($this->googleSheetsConfig->spreadsheetId);
         $log->setSheetName($this->googleSheetsConfig->sheetName);
         $log->setPayload([
-            'row' => $row,
+            'cells' => $cells,
         ]);
 
         $this->entityManager->persist($log);
 
         try {
-            $response = $this->googleSheetsClient->appendRow($row);
+            $response = $this->googleSheetsClient->appendSparseRow($cells);
 
             /*
              * Google API обычно возвращает updates.updatedRange.
@@ -65,7 +65,7 @@ final readonly class TelegramDocumentGoogleSheetWriter
             $log->setWrittenAt(new \DateTimeImmutable());
             $log->setAppendedRange(is_string($updatedRange) ? $updatedRange : null);
             $log->setPayload([
-                'row' => $row,
+                'cells' => $cells,
                 'response' => $response,
             ]);
 
