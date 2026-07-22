@@ -154,7 +154,7 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
 
         return array_filter([
             'B' => $this->buildDocumentNumber($fields),
-            'D' => $this->buildComment($telegramDocument),
+            'D' => null, // $this->buildComment($telegramDocument), // пока комментарий не пишем
             'G' => null, // Клиент - позже начнем парсить
             'H' => $fields['beneficiaryName'] ?? null,
             'I' => null, // Страна получателя - позже начнем парсить
@@ -163,10 +163,29 @@ final readonly class TelegramDocumentGoogleSheetRowMapper
             'L' => $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null),
             'M' => $this->extractBusinessDays($fields['paymentTermRaw'] ?? null),
             'N' => $fields['paymentCurrency'] ?? null,
-            'O' => $fields['paymentAmount'] ?? null,
+            'O' => $this->decimalToFloat($fields['paymentAmount'] ?? null),
             'P' => $this->formatPercent($fields['agencyFeePercent'] ?? null),
             'Q' => null, // Доп. платеж
             'R' => null, // Валюта доп. платежа
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
+    }
+
+    private function decimalToFloat(mixed $value): ?float
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $normalized = str_replace(
+            [' ', "\u{00A0}", ','],
+            ['', '', '.'],
+            (string) $value,
+        );
+
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        return (float) $normalized;
     }
 }
