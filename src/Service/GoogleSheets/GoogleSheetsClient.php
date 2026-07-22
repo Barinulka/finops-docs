@@ -5,6 +5,7 @@ namespace App\Service\GoogleSheets;
 use Google\Client;
 use Google\Service\Sheets;
 use Google\Service\Sheets\ValueRange;
+use Google\Service\Sheets\BatchUpdateValuesRequest;
 
 final readonly class GoogleSheetsClient
 {
@@ -98,18 +99,20 @@ final readonly class GoogleSheetsClient
         $data = [];
 
         foreach ($cellsByColumn as $column => $value) {
-            $data[] = new ValueRange([
-                'range' => sprintf('%s!%s%d', $this->quoteSheetName(), $column, $nextRowNumber),
-                'values' => [
-                    [$value],
+            $valueRange = new ValueRange();
+            $valueRange->setRange(sprintf('%s!%s%d', $this->quoteSheetName(), $column, $nextRowNumber));
+            $valueRange->setValues([
+                [
+                    $value,
                 ],
             ]);
+
+            $data[] = $valueRange;
         }
 
-        $body = new Sheets\BatchUpdateValuesRequest([
-            'valueInputOption' => 'USER_ENTERED',
-            'data' => $data,
-        ]);
+        $body = new BatchUpdateValuesRequest();
+        $body->setValueInputOption('USER_ENTERED');
+        $body->setData($data);
 
         $response = $service->spreadsheets_values->batchUpdate(
             $this->config->spreadsheetId,
