@@ -95,6 +95,7 @@ final readonly class GoogleSheetsClient
         $service = new Sheets($client);
 
         $nextRowNumber = $this->resolveNextRowNumber($service);
+        $this->ensureRowExists($service, $nextRowNumber);
 
         $data = [];
 
@@ -176,5 +177,48 @@ final readonly class GoogleSheetsClient
             static fn (string|int|float|bool|null $value): string|int|float|bool => $value ?? '',
             $row,
         ));
+    }
+
+    private function ensureRowExists(Sheets $service, int $rowNumber): void
+    {
+        $spreadsheet = $service->spreadsheets->get($this->config->spreadsheetId);
+        $sheet = $this->findSheetByName($spreadsheet->getSheets());
+
+        $gridProperties = $sheet->getProperties()->getGridProperties();
+        $rowCount = $gridProperties?->getRowCount() ?? 0;
+
+        if ($rowCount >= $rowNumber) {
+            return;
+        }
+
+        $request = new Sheets\Request([
+            'appendDimension' => [
+                'sheetId' => $sheet->getProperties()->getSheetId(),
+                'dimension' => 'ROWS',
+                'length' => $rowNumber - $rowCount,
+            ],
+        ]);
+
+        $batchUpdateRequest = new Sheets\BatchUpdateSpreadsheetRequest([
+            'requests' => [
+                $request,
+            ],
+        ]);
+
+        $service->spreadsheets->batchUpdate($this->config->spreadsheetId, $batchUpdateRequest);
+    }
+
+    /**
+     * @param list<Sheets\Sheet> $sheets
+     */
+    private function findSheetByName(array $sheets): Sheets\Sheet
+    {
+        foreach ($sheets as $sheet) {
+            if ($sheet->getProperties()->getTitle() === $this->config->sheetName) {
+                return $sheet;
+            }
+        }
+
+        throw new \RuntimeException(sprintf('Google Sheets sheet "%s" was not found.', $this->config->sheetName));
     }
 }
