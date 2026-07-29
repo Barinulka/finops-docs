@@ -109,7 +109,10 @@ final readonly class TelegramBotClient
             ltrim($filePath, '/'),
         );
 
-        return $this->httpClient->request('GET', $url)->getContent();
+        return $this->httpClient->request('GET', $url, [
+            'timeout' => 15,
+            'max_duration' => 30,
+        ])->getContent();
     }
 
     /**
@@ -128,6 +131,8 @@ final readonly class TelegramBotClient
 
         $response = $this->httpClient->request('POST', $url, [
             'json' => $payload,
+            'timeout' => 8,
+            'max_duration' => 10,
         ]);
 
         /** @var array<string, mixed> $data */
