@@ -69,6 +69,7 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
         parse_payment_amount(raw_text, fields, warnings)
         parse_execution_term(raw_text, fields, warnings)
         parse_payment_term(raw_text, fields)
+        parse_asstra_recipient_details(raw_text, fields)
         parse_exchange_rate(raw_text, fields, warnings)
         parse_payment_amount_rub(raw_text, fields, warnings)
         parse_agency_fee_percent(raw_text, fields)
@@ -80,6 +81,69 @@ def parse_fields(raw_text: str) -> tuple[dict, list[str], str, float]:
     confidence = calculate_confidence(fields, document_type)
 
     return fields, warnings, document_type, confidence
+
+def parse_asstra_recipient_details(raw_text: str, fields: dict) -> None:
+    block_match = re.search(
+        r"Наименование\s+получателя\s+оплаты:\s*(.+?)\s+Для\s+исполнения\s+Заявки",
+        raw_text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if block_match is None:
+        return
+
+    block = block_match.group(1)
+
+    name_match = re.search(
+        r"^(.+?)\s+Адрес\s*:",
+        block,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    if name_match is not None:
+        fields["beneficiaryName"] = normalize_spaces(name_match.group(1))
+
+    address_match = re.search(
+        r"Адрес\s*:\s*(.+?)\s+Банк\s*:",
+        block,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    address = normalize_spaces(address_match.group(1)) if address_match is not None else ""
+
+    bank_match = re.search(
+        r"Банк\s*:\s*(.+?)\s+Swift\s*:",
+        block,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+
+    bank = normalize_spaces(bank_match.group(1)) if bank_match is not None else ""
+
+    if bank:
+        fields["beneficiaryBank"] = bank
+
+    swift_match = re.search(
+        r"Swift\s*:\s*([A-Z0-9]{8,11})",
+        block,
+        flags=re.IGNORECASE,
+    )
+
+    if swift_match is not None:
+        fields["swiftCode"] = swift_match.group(1).upper()
+
+    account_match = re.search(
+        r"Счет\s*№\s*:\s*([A-Z0-9\s]+)",
+        block,
+        flags=re.IGNORECASE,
+    )
+
+    if account_match is not None:
+        fields["beneficiaryAccount"] = re.sub(r"\s+", "", account_match.group(1))
+
+    country = guess_country_from_text(f"{address} {bank}")
+
+    if country is not None:
+        fields["beneficiaryCountry"] = country
 
 def parse_subagent_application(raw_text: str, fields: dict, warnings: list[str]) -> None:
     parse_subagent_application_contract(raw_text, fields)
@@ -1993,6 +2057,17 @@ def guess_country_from_text(text: str) -> str | None:
         "switzerland": "Switzerland",
         "maldives": "Maldives",
         "kocaeli": "Turkey",
+        "israel": "Israel",
+        "tel-aviv": "Israel",
+        "ramat gan": "Israel",
+        "south africa": "South Africa",
+        "south african": "South Africa",
+        "ecuador": "Ecuador",
+        "samborondon": "Ecuador",
+        "banco pichincha": "Ecuador",
+        "bahrain": "Bahrain",
+        "hidd": "Bahrain",
+        "kuwait finance house bsc": "Bahrain",
     }
 
     lowered = text.lower()
