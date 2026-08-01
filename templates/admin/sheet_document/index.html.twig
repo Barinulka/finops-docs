@@ -1,0 +1,28 @@
+{% extends '@EasyAdmin/crud/index.html.twig' %}
+
+{% block body_javascript %}
+    {{ parent() }}
+
+    <script>
+        (() => {
+            const activeStatusValues = [
+                'В очереди на парсинг',
+                'Парсится',
+                'В очереди на запись',
+                'Записывается',
+            ];
+
+            const pageText = document.body.innerText;
+
+            const hasActiveStatus = activeStatusValues.some((status) => pageText.includes(status));
+
+            if (!hasActiveStatus) {
+                return;
+            }
+
+            window.setTimeout(() => {
+                window.location.reload();
+            }, 3000);
+        })();
+    </script>
+{% endblock %}

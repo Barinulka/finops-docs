@@ -1,0 +1,57 @@
+{% set labels = {
+    requestNumber: 'Номер заявки/поручения',
+    requestDate: 'Дата заявки/поручения',
+    contractNumber: 'Номер договора',
+    contractDate: 'Дата договора',
+    clientName: 'Клиент',
+    beneficiaryName: 'Получатель',
+    beneficiaryCountry: 'Страна получателя',
+    beneficiaryBank: 'Банк получателя',
+    beneficiaryAccount: 'Счет получателя',
+    swiftCode: 'SWIFT',
+    invoiceNumber: 'Номер инвойса',
+    invoiceDate: 'Дата инвойса',
+    paymentAmount: 'Сумма в валюте',
+    paymentCurrency: 'Валюта',
+    paymentAmountRub: 'Сумма в рублях',
+    exchangeRate: 'Курс',
+    exchangeRateRaw: 'Курс, исходный текст',
+    agencyFeePercent: '% вознаграждения',
+    agencyFeeAmountRub: 'Вознаграждение, руб',
+    totalAmountRub: 'Итого, руб',
+    extraPaymentAmount: 'Доп. платеж',
+    extraPaymentCurrency: 'Валюта доп. платежа',
+    paymentType: 'Вид оплаты',
+    paymentTypeRaw: 'Вид оплаты, исходный текст',
+    executionTermRaw: 'Срок исполнения, исходный текст',
+    executionDueDate: 'Срок исполнения',
+    paymentTermRaw: 'Срок оплаты, исходный текст',
+    paymentDueDate: 'Срок оплаты',
+    paymentReference: 'Референс платежа',
+    termsComment: 'Комментарий по срокам'
+} %}
+
+{% set fields = field.value ?? {} %}
+
+{% if fields is empty %}
+    <span class="badge badge-secondary">Пусто</span>
+{% else %}
+    <dl class="sheet-document-fields">
+        {% for key, label in labels %}
+            {% set value = attribute(fields, key)|default(null) %}
+
+            {% if value is not same as(null) and value is not same as('') %}
+                <div class="sheet-document-fields__row">
+                    <dt>{{ label }}</dt>
+                    <dd>
+                        {% if value is iterable %}
+                            {{ value|json_encode(constant('JSON_UNESCAPED_UNICODE')) }}
+                        {% else %}
+                            {{ value }}
+                        {% endif %}
+                    </dd>
+                </div>
+            {% endif %}
+        {% endfor %}
+    </dl>
+{% endif %}

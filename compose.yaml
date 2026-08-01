@@ -30,6 +30,8 @@ services:
         USER_ID: ${USER_ID:-1000}
         GROUP_ID: ${GROUP_ID:-1000}
     working_dir: /app
+    env_file:
+      - .env.local
     environment: *app-environment
     volumes:
       - .:/app
@@ -44,6 +46,8 @@ services:
         GROUP_ID: ${GROUP_ID:-1000}
     working_dir: /app
     command: ["php", "bin/console", "messenger:consume", "async", "-vv"]
+    env_file:
+      - .env.local
     environment: *app-environment
     volumes:
       - .:/app

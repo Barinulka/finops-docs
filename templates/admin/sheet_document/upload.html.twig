@@ -1,0 +1,26 @@
+{% extends '@EasyAdmin/page/content.html.twig' %}
+
+{% block page_title %}Загрузка документов{% endblock %}
+
+{% block content_title %}Загрузка документов{% endblock %}
+
+{% block main %}
+    <div class="content-panel">
+        <div class="content-panel-body">
+            {{ form_start(form) }}
+            {{ form_row(form.files) }}
+
+            <div class="form-actions mt-4">
+                {{ form_widget(form.submit) }}
+
+                <a href="{{ ea_url()
+                    .setController('App\\\\Controller\\\\Admin\\\\SheetDocumentCrudController')
+                    .setAction('index')
+                }}" class="btn btn-secondary">
+                    Отмена
+                </a>
+            </div>
+            {{ form_end(form) }}
+        </div>
+    </div>
+{% endblock %}

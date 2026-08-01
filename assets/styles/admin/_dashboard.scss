@@ -59,3 +59,25 @@
         color: var(--text-muted);
     }
 }
+
+.sheet-document-fields {
+    display: grid;
+    grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+    gap: 8px 20px;
+    margin: 0;
+}
+
+.sheet-document-fields__row {
+    display: contents;
+}
+
+.sheet-document-fields dt {
+    color: var(--text-muted);
+    font-weight: 600;
+    margin: 0;
+}
+
+.sheet-document-fields dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}

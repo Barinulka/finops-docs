@@ -50,21 +50,25 @@ class DashboardController extends AbstractDashboardController
     {
         yield MenuItem::linkToDashboard('Панель управления', 'fa fa-home');
 
-        yield MenuItem::section('CRM');
-        yield MenuItem::linkTo(ClientCrudController::class, 'Клиенты', 'fa fa-building');
-        yield MenuItem::linkTo(DocumentCrudController::class, 'Документы', 'fa fa-file-lines');
-        yield MenuItem::linkTo(OperationCrudController::class, 'Операции', 'fa fa-money-bill-transfer');
+//        yield MenuItem::section('CRM');
+//        yield MenuItem::linkTo(ClientCrudController::class, 'Клиенты', 'fa fa-building');
+//        yield MenuItem::linkTo(DocumentCrudController::class, 'Документы', 'fa fa-file-lines');
+//        yield MenuItem::linkTo(OperationCrudController::class, 'Операции', 'fa fa-money-bill-transfer');
 
         if ($this->isGranted('ROLE_ADMIN')) {
-            yield MenuItem::section('Telegram');
-            yield MenuItem::linkTo(TelegramUserCrudController::class, 'Пользователи', 'fa fa-paper-plane');
-            yield MenuItem::linkTo(TelegramDocumentCrudController::class, 'Документы', 'fa fa-file-pdf');
-            yield MenuItem::linkTo(TelegramMessageLogCrudController::class, 'Журнал сообщений', 'fa fa-comments');
+//            yield MenuItem::section('Telegram');
+//            yield MenuItem::linkTo(TelegramUserCrudController::class, 'Пользователи', 'fa fa-paper-plane');
+//            yield MenuItem::linkTo(TelegramDocumentCrudController::class, 'Документы', 'fa fa-file-pdf');
+//            yield MenuItem::linkTo(TelegramMessageLogCrudController::class, 'Журнал сообщений', 'fa fa-comments');
 
-            yield MenuItem::section('Интеграции');
-            yield MenuItem::linkTo(GoogleSheetAppendLogCrudController::class, 'Google Sheets log', 'fa fa-table');
+            yield MenuItem::section('Google Sheets');
+            yield MenuItem::linkTo(SheetDocumentCrudController::class, 'Загрузка документов', 'fa fa-file-import');
+
+//            yield MenuItem::section('Интеграции');
+//            yield MenuItem::linkTo(GoogleSheetAppendLogCrudController::class, 'Журнал Google Sheets', 'fa fa-table');
 
             yield MenuItem::section('Система');
+            yield MenuItem::linkTo(UserCrudController::class, 'Пользователи админки', 'fa fa-users');
             yield MenuItem::linkTo(AuditLogCrudController::class, 'Аудит', 'fa fa-clock-rotate-left');
             yield MenuItem::linkToRoute('Ошибки очереди', 'fa fa-triangle-exclamation', 'admin_messenger_failed');
         }

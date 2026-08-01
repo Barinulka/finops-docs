@@ -19,6 +19,8 @@ framework:
         routing:
             App\Message\ParseDocumentMessage: async
             App\Message\ProcessTelegramDocumentMessage: async
+            App\Message\ParseSheetDocumentMessage: async
+            App\Message\WriteSheetDocumentToGoogleSheetsMessage: async
 
 when@test:
     framework:
