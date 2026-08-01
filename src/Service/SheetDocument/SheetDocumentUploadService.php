@@ -53,20 +53,19 @@ final readonly class SheetDocumentUploadService
                 continue;
             }
 
+            $storagePath = $this->buildStoragePath($now);
+
             $sheetDocument = new SheetDocument();
             $sheetDocument
                 ->setUploadedBy($uploadedBy)
                 ->setOriginalFilename($file->getClientOriginalName())
+                ->setStoragePath($storagePath)
                 ->setMimeType($file->getMimeType() ?: 'application/pdf')
                 ->setSizeBytes($file->getSize())
                 ->setChecksumSha256($checksumSha256)
                 ->setUploadedAt($now)
-                ->setStatus(SheetDocumentStatus::Uploaded);
-
-            $this->entityManager->persist($sheetDocument);
-            $this->entityManager->flush();
-
-            $storagePath = $this->buildStoragePath($sheetDocument, $now);
+                ->setStatus(SheetDocumentStatus::QueuedForParsing)
+                ->setQueuedForParsingAt($now);
 
             $stream = fopen($file->getPathname(), 'rb');
 
@@ -85,11 +84,7 @@ final readonly class SheetDocumentUploadService
                 }
             }
 
-            $sheetDocument
-                ->setStoragePath($storagePath)
-                ->setStatus(SheetDocumentStatus::QueuedForParsing)
-                ->setQueuedForParsingAt($now);
-
+            $this->entityManager->persist($sheetDocument);
             $this->entityManager->flush();
 
             $this->messageBus->dispatch(new ParseSheetDocumentMessage((string) $sheetDocument->getId()));
@@ -100,11 +95,10 @@ final readonly class SheetDocumentUploadService
         return $result;
     }
 
-    private function buildStoragePath(SheetDocument $sheetDocument, \DateTimeImmutable $uploadedAt): string
+    private function buildStoragePath(\DateTimeImmutable $uploadedAt): string
     {
         return sprintf(
-            'sheet-documents/%s/%s/%s.pdf',
-            (string) $sheetDocument->getId(),
+            'sheet-documents/%s/%s.pdf',
             $uploadedAt->format('Y/m/d'),
             (string) new Ulid(),
         );
