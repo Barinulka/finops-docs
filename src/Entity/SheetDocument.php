@@ -360,6 +360,11 @@ class SheetDocument
         return $this->writtenAt;
     }
 
+    public function isWrittenToSheet(): bool
+    {
+        return $this->writtenAt !== null;
+    }
+
     public function setWrittenAt(?\DateTimeImmutable $writtenAt): static
     {
         $this->writtenAt = $writtenAt;

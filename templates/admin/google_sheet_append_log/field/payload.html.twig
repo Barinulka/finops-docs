@@ -1,0 +1,5 @@
+{% if field.value is empty %}
+    <span class="badge badge-secondary">Пусто</span>
+{% else %}
+    <pre style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 520px; overflow: auto;">{{ field.value|json_encode(constant('JSON_PRETTY_PRINT') b-or constant('JSON_UNESCAPED_UNICODE')) }}</pre>
+{% endif %}

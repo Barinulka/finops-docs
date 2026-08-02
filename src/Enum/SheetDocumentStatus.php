@@ -66,6 +66,16 @@ enum SheetDocumentStatus: string
         ], true);
     }
 
+    public function canBeQueuedForWrite(): bool
+    {
+        return in_array($this, [
+            self::Parsed,
+            self::NeedsReview,
+            self::ValidationFailed,
+            self::WriteFailed,
+        ], true);
+    }
+
     public function canBeWritten(): bool
     {
         return in_array($this, [

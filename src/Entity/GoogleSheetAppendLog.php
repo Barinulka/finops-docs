@@ -13,6 +13,8 @@ use Symfony\Component\Uid\Ulid;
 #[ORM\Index(name: 'idx_google_sheet_append_log_document', columns: ['telegram_document_id'])]
 #[ORM\Index(name: 'idx_google_sheet_append_log_status', columns: ['status'])]
 #[ORM\Index(name: 'idx_google_sheet_append_log_created_at', columns: ['created_at'])]
+#[ORM\Index(name: 'idx_google_sheet_append_log_sheet_document', columns: ['sheet_document_id'])]
+#[ORM\Index(name: 'idx_google_sheet_append_log_requested_by', columns: ['requested_by_id'])]
 class GoogleSheetAppendLog
 {
     #[ORM\Id]
@@ -22,8 +24,16 @@ class GoogleSheetAppendLog
     private ?Ulid $id = null;
 
     #[ORM\ManyToOne]
-    #[ORM\JoinColumn(nullable: false)]
+    #[ORM\JoinColumn(nullable: true)]
     private ?TelegramDocument $telegramDocument = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?SheetDocument $sheetDocument = null;
+
+    #[ORM\ManyToOne]
+    #[ORM\JoinColumn(nullable: true)]
+    private ?User $requestedBy = null;
 
     #[ORM\Column(length: 255)]
     private ?string $spreadsheetId = null;
@@ -65,9 +75,33 @@ class GoogleSheetAppendLog
         return $this->telegramDocument;
     }
 
-    public function setTelegramDocument(TelegramDocument $telegramDocument): static
+    public function setTelegramDocument(?TelegramDocument $telegramDocument): static
     {
         $this->telegramDocument = $telegramDocument;
+
+        return $this;
+    }
+
+    public function getSheetDocument(): ?SheetDocument
+    {
+        return $this->sheetDocument;
+    }
+
+    public function setSheetDocument(?SheetDocument $sheetDocument): static
+    {
+        $this->sheetDocument = $sheetDocument;
+
+        return $this;
+    }
+
+    public function getRequestedBy(): ?User
+    {
+        return $this->requestedBy;
+    }
+
+    public function setRequestedBy(?User $requestedBy): static
+    {
+        $this->requestedBy = $requestedBy;
 
         return $this;
     }

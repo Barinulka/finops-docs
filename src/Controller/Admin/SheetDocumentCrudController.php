@@ -22,6 +22,11 @@ use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\Messenger\MessageBusInterface;
 use EasyCorp\Bundle\EasyAdminBundle\Attribute\AdminRoute;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\BatchActionDto;
+use EasyCorp\Bundle\EasyAdminBundle\Config\Filters;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\ChoiceFilter;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\DateTimeFilter;
+use EasyCorp\Bundle\EasyAdminBundle\Filter\EntityFilter;
+use App\Admin\Filter\SheetWrittenFilter;
 
 final class SheetDocumentCrudController extends AbstractCrudController
 {
@@ -60,7 +65,7 @@ final class SheetDocumentCrudController extends AbstractCrudController
             ->addCssClass('btn btn-primary');
         $writeToGoogleSheets = Action::new('queueWriteToGoogleSheets', 'Записать в таблицу', 'fa fa-table')
             ->linkToCrudAction('queueWriteToGoogleSheets')
-            ->displayIf(static fn (SheetDocument $sheetDocument): bool => $sheetDocument->getStatus()->canBeWritten())
+            ->displayIf(static fn (SheetDocument $sheetDocument): bool => $sheetDocument->getStatus()->canBeQueuedForWrite())
             ->addCssClass('btn btn-primary');
         $queueSelectedToGoogleSheets = Action::new('queueSelectedToGoogleSheets', 'Записать выбранные в таблицу', 'fa fa-table')
             ->linkToCrudAction('queueSelectedToGoogleSheets')
@@ -73,6 +78,21 @@ final class SheetDocumentCrudController extends AbstractCrudController
             ->add(Action::INDEX, $writeToGoogleSheets)
             ->add(Action::DETAIL, $writeToGoogleSheets)
             ->add(Crud::PAGE_INDEX, $queueSelectedToGoogleSheets);
+    }
+
+    public function configureFilters(Filters $filters): Filters
+    {
+        $statusChoices = [];
+
+        foreach (SheetDocumentStatus::cases() as $status) {
+            $statusChoices[$status->label()] = $status;
+        }
+
+        return $filters
+            ->add(ChoiceFilter::new('status', 'Статус')->setChoices($statusChoices))
+            ->add(DateTimeFilter::new('uploadedAt', 'Дата загрузки'))
+            ->add(EntityFilter::new('uploadedBy', 'Загрузил'))
+            ->add(SheetWrittenFilter::new('writtenAt', 'Записан в таблицу'));
     }
 
     public function configureFields(string $pageName): iterable
@@ -124,10 +144,12 @@ final class SheetDocumentCrudController extends AbstractCrudController
             ->onlyOnDetail();
 
         yield TextareaField::new('errorMessage', 'Ошибка')
-            ->onlyOnDetail();
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/sheet_document/field/error_message.html.twig');
 
         yield TextareaField::new('rawText', 'Текст PDF')
-            ->onlyOnDetail();
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/sheet_document/field/raw_text.html.twig');
 
         yield DateTimeField::new('uploadedAt', 'Загружен')
             ->setFormat('dd.MM.yyyy HH:mm:ss');
@@ -162,7 +184,7 @@ final class SheetDocumentCrudController extends AbstractCrudController
             throw new \RuntimeException('Sheet document was not found in admin context.');
         }
 
-        if (!$sheetDocument->getStatus()->canBeWritten()) {
+        if (!$sheetDocument->getStatus()->canBeQueuedForWrite()) {
             $this->addFlash('warning', 'Документ в текущем статусе нельзя записать в Google таблицу.');
 
             return $this->redirectToRoute('admin_sheet_document_index');
@@ -193,7 +215,7 @@ final class SheetDocumentCrudController extends AbstractCrudController
             return $this->redirectToRoute('admin_sheet_document_index');
         }
 
-        $queuedCount = 0;
+        $queuedDocumentIds = [];
         $skippedCount = 0;
         $now = new \DateTimeImmutable();
 
@@ -206,7 +228,7 @@ final class SheetDocumentCrudController extends AbstractCrudController
                 continue;
             }
 
-            if (!$sheetDocument->getStatus()->canBeWritten() || $sheetDocument->getStatus() === SheetDocumentStatus::Written) {
+            if (!$sheetDocument->getStatus()->canBeQueuedForWrite()) {
                 ++$skippedCount;
 
                 continue;
@@ -215,18 +237,30 @@ final class SheetDocumentCrudController extends AbstractCrudController
             $sheetDocument
                 ->setStatus(SheetDocumentStatus::QueuedForWrite)
                 ->setQueuedForWriteAt($now)
-                ->setErrorMessage(null);
+                ->setErrorMessage(null)
+                ->setFailedAt(null);
 
-            $this->messageBus->dispatch(new WriteSheetDocumentToGoogleSheetsMessage((string) $sheetDocument->getId()));
-
-            ++$queuedCount;
+            $queuedDocumentIds[] = (string) $sheetDocument->getId();
         }
 
         $this->entityManager->flush();
 
+        foreach ($queuedDocumentIds as $documentId) {
+            $this->messageBus->dispatch(new WriteSheetDocumentToGoogleSheetsMessage($documentId));
+        }
+
+        if ($queuedDocumentIds === []) {
+            $this->addFlash('warning', sprintf(
+                'Ни один документ не был поставлен в очередь. Пропущено: %d.',
+                $skippedCount,
+            ));
+
+            return $this->redirectToRoute('admin_sheet_document_index');
+        }
+
         $this->addFlash('success', sprintf(
             'В очередь на запись поставлено: %d. Пропущено: %d.',
-            $queuedCount,
+            count($queuedDocumentIds),
             $skippedCount,
         ));
 

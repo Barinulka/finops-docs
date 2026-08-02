@@ -1,0 +1,5 @@
+{% if field.value is empty %}
+    <span class="badge badge-secondary">Пусто</span>
+{% else %}
+    <pre style="white-space: pre-wrap; overflow-wrap: anywhere; max-height: 520px; overflow: auto;">{{ field.value }}</pre>
+{% endif %}

@@ -12,6 +12,10 @@ use EasyCorp\Bundle\EasyAdminBundle\Config\MenuItem;
 use EasyCorp\Bundle\EasyAdminBundle\Controller\AbstractDashboardController;
 use EasyCorp\Bundle\EasyAdminBundle\Config\Assets;
 use Symfony\Component\HttpFoundation\Response;
+use App\Enum\SheetDocumentStatus;
+use App\Enum\Telegram\GoogleSheetAppendStatus;
+use App\Repository\GoogleSheetAppendLogRepository;
+use App\Repository\SheetDocumentRepository;
 
 #[AdminDashboard(routePath: '/admin', routeName: 'admin')]
 class DashboardController extends AbstractDashboardController
@@ -21,16 +25,52 @@ class DashboardController extends AbstractDashboardController
         private readonly DocumentRepository $documentRepository,
         private readonly OperationRepository $operationRepository,
         private readonly AuditLogRepository $auditLogRepository,
+        private readonly SheetDocumentRepository $sheetDocumentRepository,
+        private readonly GoogleSheetAppendLogRepository $googleSheetAppendLogRepository,
     ) {
     }
 
     public function index(): Response
     {
+        $statusesForErrors = [
+            SheetDocumentStatus::Failed,
+            SheetDocumentStatus::WriteFailed,
+        ];
+
         return $this->render('admin/dashboard.html.twig', [
             'clientsCount' => $this->clientRepository->count([]),
             'documentsCount' => $this->documentRepository->count([]),
             'operationsCount' => $this->operationRepository->count([]),
             'auditLogsCount' => $this->auditLogRepository->count([]),
+
+            'sheetDocumentsTotalCount' => $this->sheetDocumentRepository->count([]),
+            'sheetDocumentsQueuedCount' => $this->sheetDocumentRepository->count([
+                'status' => [
+                    SheetDocumentStatus::QueuedForParsing,
+                    SheetDocumentStatus::Parsing,
+                    SheetDocumentStatus::QueuedForWrite,
+                    SheetDocumentStatus::Writing,
+                ],
+            ]),
+            'sheetDocumentsWrittenCount' => $this->sheetDocumentRepository->count([
+                'status' => SheetDocumentStatus::Written,
+            ]),
+            'sheetDocumentsErrorCount' => $this->sheetDocumentRepository->count([
+                'status' => $statusesForErrors,
+            ]),
+            'latestSheetDocuments' => $this->sheetDocumentRepository->findBy(
+                [],
+                ['createdAt' => 'DESC'],
+                8,
+            ),
+            'latestGoogleSheetLogs' => $this->googleSheetAppendLogRepository->findBy(
+                [],
+                ['createdAt' => 'DESC'],
+                8,
+            ),
+            'latestGoogleSheetFailedCount' => $this->googleSheetAppendLogRepository->count([
+                'status' => GoogleSheetAppendStatus::Failed,
+            ]),
         ]);
     }
 
@@ -64,8 +104,8 @@ class DashboardController extends AbstractDashboardController
             yield MenuItem::section('Google Sheets');
             yield MenuItem::linkTo(SheetDocumentCrudController::class, 'Загрузка документов', 'fa fa-file-import');
 
-//            yield MenuItem::section('Интеграции');
-//            yield MenuItem::linkTo(GoogleSheetAppendLogCrudController::class, 'Журнал Google Sheets', 'fa fa-table');
+            yield MenuItem::section('Интеграции');
+            yield MenuItem::linkTo(GoogleSheetAppendLogCrudController::class, 'Журнал Google Sheets', 'fa fa-table');
 
             yield MenuItem::section('Система');
             yield MenuItem::linkTo(UserCrudController::class, 'Пользователи админки', 'fa fa-users');

@@ -1,0 +1,5 @@
+{% if field.value is empty %}
+    <span class="badge badge-secondary sheet-document-detail-empty">Пусто</span>
+{% else %}
+    <pre class="sheet-document-pre">{{ field.value }}</pre>
+{% endif %}

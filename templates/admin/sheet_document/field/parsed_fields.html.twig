@@ -32,9 +32,17 @@
 } %}
 
 {% set fields = field.value ?? {} %}
+{% set hasValues = false %}
 
-{% if fields is empty %}
-    <span class="badge badge-secondary">Пусто</span>
+{% for key, label in labels %}
+    {% set value = attribute(fields, key)|default(null) %}
+    {% if value is not same as(null) and value is not same as('') %}
+        {% set hasValues = true %}
+    {% endif %}
+{% endfor %}
+
+{% if not hasValues %}
+    <span class="badge badge-secondary sheet-document-detail-empty">Пусто</span>
 {% else %}
     <dl class="sheet-document-fields">
         {% for key, label in labels %}
