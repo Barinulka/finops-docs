@@ -8,7 +8,7 @@ use EasyCorp\Bundle\EasyAdminBundle\Dto\EntityDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\FieldDto;
 use EasyCorp\Bundle\EasyAdminBundle\Dto\FilterDataDto;
 use EasyCorp\Bundle\EasyAdminBundle\Filter\FilterTrait;
-use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
+use EasyCorp\Bundle\EasyAdminBundle\Form\Filter\Type\BooleanFilterType;
 
 final class SheetWrittenFilter implements FilterInterface
 {
@@ -20,11 +20,12 @@ final class SheetWrittenFilter implements FilterInterface
             ->setFilterFqcn(self::class)
             ->setProperty($propertyName)
             ->setLabel($label)
-            ->setFormType(ChoiceType::class)
+            ->setFormType(BooleanFilterType::class)
             ->setFormTypeOption('choices', [
-                'Да' => 'yes',
-                'Нет' => 'no',
-            ]);
+                'Да' => true,
+                'Нет' => false,
+            ])
+            ->setFormTypeOption('translation_domain', false);
     }
 
     public function apply(
@@ -33,15 +34,13 @@ final class SheetWrittenFilter implements FilterInterface
         ?FieldDto $fieldDto,
         EntityDto $entityDto,
     ): void {
-        $value = $filterDataDto->getValue();
-
-        if ($value === 'yes') {
+        if ($filterDataDto->getValue() === true) {
             $queryBuilder->andWhere(sprintf('%s.writtenAt IS NOT NULL', $filterDataDto->getEntityAlias()));
 
             return;
         }
 
-        if ($value === 'no') {
+        if ($filterDataDto->getValue() === false) {
             $queryBuilder->andWhere(sprintf('%s.writtenAt IS NULL', $filterDataDto->getEntityAlias()));
         }
     }
