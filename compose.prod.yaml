@@ -4,6 +4,8 @@ x-app-environment: &app-environment
   APP_SECRET: ${APP_SECRET}
   APP_LOCALE: ${APP_LOCALE:-ru}
   DEFAULT_URI: ${DEFAULT_URI}
+  SYMFONY_TRUSTED_PROXIES: "127.0.0.1,172.16.0.0/12"
+  SYMFONY_TRUSTED_HEADERS: "x-forwarded-for,x-forwarded-host,x-forwarded-proto,x-forwarded-port,x-forwarded-prefix"
 
   DATABASE_URL: "postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@database:5432/${POSTGRES_DB}?serverVersion=16&charset=utf8"
 
