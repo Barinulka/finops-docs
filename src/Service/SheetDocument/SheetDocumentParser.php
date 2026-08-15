@@ -28,6 +28,11 @@ final readonly class SheetDocumentParser
         $result = $this->documentParserClient->parsePdf($pdfContent, $filename);
 
         $fields = $result['fields'] ?? [];
+
+        if (is_array($fields)) {
+            $fields['executionBusinessDays'] = $this->resolveExecutionBusinessDays($fields);
+        }
+
         $warnings = $result['warnings'] ?? [];
         $rawText = $result['rawText'] ?? null;
         $confidence = $result['confidence'] ?? null;
@@ -65,5 +70,87 @@ final readonly class SheetDocumentParser
         }
 
         $sheetDocument->setStatus(SheetDocumentStatus::Parsed);
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveExecutionBusinessDays(array $fields): ?int
+    {
+        $businessDays = $this->extractBusinessDays($fields['executionTermRaw'] ?? null);
+
+        if ($businessDays !== null) {
+            return $businessDays;
+        }
+
+        return $this->countBusinessDaysBetween(
+            $fields['requestDate'] ?? null,
+            $fields['executionDueDate'] ?? null,
+        );
+    }
+
+    private function extractBusinessDays(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $text = (string) $value;
+
+        if (preg_match('/(\d+)\s*\([^)]*\)\s*(?:рабочего|рабочих|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        if (preg_match('/(\d+)\s*(?:рабочего|рабочих|раб\.?|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        if (preg_match('/(\d+)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        return null;
+    }
+
+    private function countBusinessDaysBetween(mixed $startDate, mixed $endDate): ?int
+    {
+        $start = $this->dateFromValue($startDate);
+        $end = $this->dateFromValue($endDate);
+
+        if ($start === null || $end === null || $end < $start) {
+            return null;
+        }
+
+        $days = 0;
+        $current = $start->modify('+1 day');
+
+        while ($current <= $end) {
+            if ((int) $current->format('N') <= 5) {
+                ++$days;
+            }
+
+            $current = $current->modify('+1 day');
+        }
+
+        return $days;
+    }
+
+    private function dateFromValue(mixed $value): ?\DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        foreach (['Y-m-d', 'd.m.Y'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat('!' . $format, $text);
+
+            if ($date instanceof \DateTimeImmutable) {
+                return $date;
+            }
+        }
+
+        return null;
     }
 }
