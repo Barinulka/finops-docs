@@ -11,9 +11,9 @@
 
         {% set block = [
             item.title|default('Проверка') ~ ' — ' ~ statusLabel,
-            item.formula|default(null) ? 'Формула: ' ~ item.formula : null,
-            item.expected|default(null) is not same as(null) ? 'Ожидалось: ' ~ item.expected : null,
-            item.actual|default(null) is not same as(null) ? 'В документе: ' ~ item.actual : null,
+            item.formula|default(null) ? 'Формула: ' ~ (item.formula|admin_numbers) : null,
+            item.expected|default(null) is not same as(null) ? 'Ожидалось: ' ~ (item.expected|admin_number) : null,
+            item.actual|default(null) is not same as(null) ? 'В документе: ' ~ (item.actual|admin_number) : null,
             item.message|default(null) ? 'Комментарий: ' ~ item.message : null,
         ]|filter(v => v is not null) %}
 

@@ -1,0 +1,43 @@
+{% set details = field.value ?? [] %}
+
+{% if details is empty %}
+    <span class="badge badge-secondary sheet-document-detail-empty">Пусто</span>
+{% else %}
+    <dl class="sheet-document-validation-details">
+        {% for item in details %}
+            {% set status = item.status|default('unknown') %}
+
+            <div class="sheet-document-validation-details__item sheet-document-validation-details__item--{{ status }}">
+                <dt>
+                    {{ item.title|default('Проверка') }}
+
+                    {% if status == 'passed' %}
+                        <span class="badge badge-success">Пройдена</span>
+                    {% elseif status == 'failed' %}
+                        <span class="badge badge-danger">Ошибка</span>
+                    {% else %}
+                        <span class="badge badge-secondary">Не выполнена</span>
+                    {% endif %}
+                </dt>
+
+                <dd>
+                    {% if item.formula|default(null) %}
+                        <div><strong>Формула:</strong> {{ item.formula }}</div>
+                    {% endif %}
+
+                    {% if item.expected|default(null) is not same as(null) %}
+                        <div><strong>Ожидалось:</strong> {{ item.expected }}</div>
+                    {% endif %}
+
+                    {% if item.actual|default(null) is not same as(null) %}
+                        <div><strong>В документе:</strong> {{ item.actual }}</div>
+                    {% endif %}
+
+                    {% if item.message|default(null) %}
+                        <div class="sheet-document-validation-details__message">{{ item.message }}</div>
+                    {% endif %}
+                </dd>
+            </div>
+        {% endfor %}
+    </dl>
+{% endif %}
