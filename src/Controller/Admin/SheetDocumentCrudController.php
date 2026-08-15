@@ -135,13 +135,19 @@ final class SheetDocumentCrudController extends AbstractCrudController
 
         yield ArrayField::new('parsedFields', 'Извлеченные поля')
             ->onlyOnDetail()
-            ->setTemplatePath('admin/sheet_document/field/parsed_fields.html.twig');
+            ->setTemplatePath('admin/sheet_document/field/json_pre.html.twig');
 
         yield ArrayField::new('parserWarnings', 'Предупреждения парсера')
-            ->onlyOnDetail();
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/sheet_document/field/json_pre.html.twig');
 
         yield ArrayField::new('validationErrors', 'Ошибки проверки')
-            ->onlyOnDetail();
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/sheet_document/field/json_pre.html.twig');
+
+        yield ArrayField::new('validationDetails', 'Математика проверки')
+            ->onlyOnDetail()
+            ->setTemplatePath('admin/sheet_document/field/validation_details_pre.html.twig');
 
         yield TextareaField::new('errorMessage', 'Ошибка')
             ->onlyOnDetail()

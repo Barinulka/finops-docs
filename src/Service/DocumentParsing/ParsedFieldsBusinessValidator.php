@@ -23,14 +23,26 @@ final readonly class ParsedFieldsBusinessValidator
      */
     public function validate(array $fields): array
     {
+        return $this->validateWithDetails($fields)->errors;
+    }
+
+    /**
+     * Проверяет распаршенные поля и возвращает не только ошибки,
+     * но и подробности расчетов для показа оператору.
+     *
+     * @param array<string, mixed> $fields
+     */
+    public function validateWithDetails(array $fields): ParsedFieldsValidationResult
+    {
         $errors = [];
+        $details = [];
 
-        $this->validateCbrRate($fields, $errors);
-        $this->validatePaymentAmountRub($fields, $errors);
-        $this->validateAgencyFeeAmountRub($fields, $errors);
-        $this->validateTotalAmountRub($fields, $errors);
+        $this->validateCbrRate($fields, $errors, $details);
+        $this->validatePaymentAmountRub($fields, $errors, $details);
+        $this->validateAgencyFeeAmountRub($fields, $errors, $details);
+        $this->validateTotalAmountRub($fields, $errors, $details);
 
-        return $errors;
+        return new ParsedFieldsValidationResult($errors, $details);
     }
 
     /**
@@ -41,7 +53,7 @@ final readonly class ParsedFieldsBusinessValidator
      * @param array<string, mixed> $fields
      * @param list<string> $errors
      */
-    private function validateCbrRate(array $fields, array &$errors): void
+    private function validateCbrRate(array $fields, array &$errors, array &$details): void
     {
         if (!$this->hasFields($fields, ['requestDate', 'paymentCurrency', 'exchangeRate'])) {
             return;
@@ -72,7 +84,24 @@ final readonly class ParsedFieldsBusinessValidator
             return;
         }
 
-        if (!$this->equals($documentRate, $cbrRate, 4)) {
+        $passed = $this->equals($documentRate, $cbrRate, 4);
+
+        $details[] = [
+            'title' => 'Курс валюты по ЦБ РФ',
+            'status' => $passed ? 'passed' : 'failed',
+            'formula' => sprintf(
+                'Курс %s на дату %s',
+                (string) $fields['paymentCurrency'],
+                $requestDate->format('d.m.Y'),
+            ),
+            'expected' => $this->formatDecimal($cbrRate),
+            'actual' => $this->formatDecimal($documentRate),
+            'message' => $passed
+                ? 'Курс в документе совпадает с курсом ЦБ РФ.'
+                : 'Курс в документе не совпадает с курсом ЦБ РФ. Денежные проверки ниже считаются по курсу из документа.',
+        ];
+
+        if (!$passed) {
             $errors[] = sprintf(
                 'Курс в документе не совпадает с курсом ЦБ РФ на %s. В документе: %s, ЦБ РФ: %s.',
                 $requestDate->format('d.m.Y'),
@@ -88,7 +117,7 @@ final readonly class ParsedFieldsBusinessValidator
      * @param array<string, mixed> $fields
      * @param list<string> $errors
      */
-    private function validatePaymentAmountRub(array $fields, array &$errors): void
+    private function validatePaymentAmountRub(array $fields, array &$errors, array &$details): void
     {
         if (!$this->hasFields($fields, ['paymentAmount', 'exchangeRate', 'paymentAmountRub'])) {
             return;
@@ -103,8 +132,24 @@ final readonly class ParsedFieldsBusinessValidator
         }
 
         $calculatedPaymentAmountRub = $this->roundMoney(bcmul($paymentAmount, $exchangeRate, 8));
+        $passed = $this->moneyEquals($calculatedPaymentAmountRub, $paymentAmountRub);
 
-        if (!$this->moneyEquals($calculatedPaymentAmountRub, $paymentAmountRub)) {
+        $details[] = [
+            'title' => 'Сумма платежа в рублях',
+            'status' => $passed ? 'passed' : 'failed',
+            'formula' => sprintf(
+                '%s * %s',
+                $this->formatDecimal($paymentAmount),
+                $this->formatDecimal($exchangeRate),
+            ),
+            'expected' => $this->formatDecimal($calculatedPaymentAmountRub),
+            'actual' => $this->formatDecimal($paymentAmountRub),
+            'message' => $passed
+                ? 'Проверка пройдена.'
+                : 'Сумма платежа в рублях не сходится.',
+        ];
+
+        if (!$passed) {
             $errors[] = sprintf(
                 'Сумма платежа в рублях не сходится. Ожидалось: %s, в документе: %s.',
                 $this->formatDecimal($calculatedPaymentAmountRub),
@@ -123,7 +168,7 @@ final readonly class ParsedFieldsBusinessValidator
      * @param array<string, mixed> $fields
      * @param list<string> $errors
      */
-    private function validateAgencyFeeAmountRub(array $fields, array &$errors): void
+    private function validateAgencyFeeAmountRub(array $fields, array &$errors, array &$details): void
     {
         if (!$this->hasFields($fields, ['paymentAmount', 'exchangeRate', 'agencyFeePercent', 'agencyFeeAmountRub'])) {
             return;
@@ -151,7 +196,27 @@ final readonly class ParsedFieldsBusinessValidator
             bcmul($calculatedAgencyFeeAmount, $exchangeRate, 8),
         );
 
-        if (!$this->moneyEquals($calculatedAgencyFeeAmountRub, $agencyFeeAmountRub)) {
+        $passed = $this->moneyEquals($calculatedAgencyFeeAmountRub, $agencyFeeAmountRub);
+
+        $details[] = [
+            'title' => 'Агентское вознаграждение в рублях',
+            'status' => $passed ? 'passed' : 'failed',
+            'formula' => sprintf(
+                '(%s * %s / 100) = %s; %s * %s',
+                $this->formatDecimal($paymentAmount),
+                $this->formatDecimal($agencyFeePercent),
+                $this->formatDecimal($calculatedAgencyFeeAmount),
+                $this->formatDecimal($calculatedAgencyFeeAmount),
+                $this->formatDecimal($exchangeRate),
+            ),
+            'expected' => $this->formatDecimal($calculatedAgencyFeeAmountRub),
+            'actual' => $this->formatDecimal($agencyFeeAmountRub),
+            'message' => $passed
+                ? 'Проверка пройдена.'
+                : 'Агентское вознаграждение в рублях не сходится.',
+        ];
+
+        if (!$passed) {
             $errors[] = sprintf(
                 'Агентское вознаграждение в рублях не сходится. Ожидалось: %s, в документе: %s.',
                 $this->formatDecimal($calculatedAgencyFeeAmountRub),
@@ -166,7 +231,7 @@ final readonly class ParsedFieldsBusinessValidator
      * @param array<string, mixed> $fields
      * @param list<string> $errors
      */
-    private function validateTotalAmountRub(array $fields, array &$errors): void
+    private function validateTotalAmountRub(array $fields, array &$errors, array &$details): void
     {
         if (!$this->hasFields($fields, ['paymentAmountRub', 'agencyFeeAmountRub', 'totalAmountRub'])) {
             return;
@@ -181,8 +246,24 @@ final readonly class ParsedFieldsBusinessValidator
         }
 
         $calculatedTotalAmountRub = $this->roundMoney(bcadd($paymentAmountRub, $agencyFeeAmountRub, 8));
+        $passed = $this->moneyEquals($calculatedTotalAmountRub, $totalAmountRub);
 
-        if (!$this->moneyEquals($calculatedTotalAmountRub, $totalAmountRub)) {
+        $details[] = [
+            'title' => 'Общая сумма в рублях',
+            'status' => $passed ? 'passed' : 'failed',
+            'formula' => sprintf(
+                '%s + %s',
+                $this->formatDecimal($paymentAmountRub),
+                $this->formatDecimal($agencyFeeAmountRub),
+            ),
+            'expected' => $this->formatDecimal($calculatedTotalAmountRub),
+            'actual' => $this->formatDecimal($totalAmountRub),
+            'message' => $passed
+                ? 'Проверка пройдена.'
+                : 'Общая сумма в рублях не сходится.',
+        ];
+
+        if (!$passed) {
             $errors[] = sprintf(
                 'Общая сумма в рублях не сходится. Ожидалось: %s, в документе: %s.',
                 $this->formatDecimal($calculatedTotalAmountRub),

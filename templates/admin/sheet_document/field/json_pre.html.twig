@@ -1,0 +1,7 @@
+{% set jsonOptions = constant('JSON_PRETTY_PRINT') + constant('JSON_UNESCAPED_UNICODE') %}
+
+{% if field.value is empty %}
+    <span class="badge badge-secondary sheet-document-detail-empty">Пусто</span>
+{% else %}
+    <pre class="sheet-document-pre">{{ field.value|json_encode(jsonOptions) }}</pre>
+{% endif %}

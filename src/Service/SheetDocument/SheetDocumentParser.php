@@ -41,8 +41,12 @@ final readonly class SheetDocumentParser
         $sheetDocument->setErrorMessage(null);
         $sheetDocument->setFailedAt(null);
 
-        $validationErrors = $this->businessValidator->validate($sheetDocument->getParsedFields());
-        $sheetDocument->setValidationErrors($validationErrors);
+        $validationResult = $this->businessValidator->validateWithDetails($sheetDocument->getParsedFields());
+
+        $sheetDocument->setValidationErrors($validationResult->errors);
+        $sheetDocument->setValidationDetails($validationResult->details);
+
+        $validationErrors = $validationResult->errors;
 
         if (
             $sheetDocument->getParserConfidence() === null

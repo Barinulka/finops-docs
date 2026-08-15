@@ -1,0 +1,24 @@
+{% set details = field.value ?? [] %}
+
+{% if details is empty %}
+    <span class="badge badge-secondary sheet-document-detail-empty">Пусто</span>
+{% else %}
+    {% set lines = [] %}
+
+    {% for item in details %}
+        {% set status = item.status|default('unknown') %}
+        {% set statusLabel = status == 'passed' ? 'Пройдена' : (status == 'failed' ? 'Ошибка' : 'Не выполнена') %}
+
+        {% set block = [
+            item.title|default('Проверка') ~ ' — ' ~ statusLabel,
+            item.formula|default(null) ? 'Формула: ' ~ item.formula : null,
+            item.expected|default(null) is not same as(null) ? 'Ожидалось: ' ~ item.expected : null,
+            item.actual|default(null) is not same as(null) ? 'В документе: ' ~ item.actual : null,
+            item.message|default(null) ? 'Комментарий: ' ~ item.message : null,
+        ]|filter(v => v is not null) %}
+
+        {% set lines = lines|merge([block|join("\n")]) %}
+    {% endfor %}
+
+    <pre class="sheet-document-pre">{{ lines|join("\n\n") }}</pre>
+{% endif %}

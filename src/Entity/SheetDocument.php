@@ -60,6 +60,9 @@ class SheetDocument
     #[ORM\Column]
     private array $validationErrors = [];
 
+    #[ORM\Column]
+    private array $validationDetails = [];
+
     #[ORM\Column(type: Types::TEXT, nullable: true)]
     private ?string $rawText = null;
 
@@ -100,6 +103,7 @@ class SheetDocument
         $this->parsedFields = [];
         $this->parserWarnings = [];
         $this->validationErrors = [];
+        $this->validationDetails = [];
         $this->uploadedAt = $now;
         $this->createdAt = $now;
         $this->updatedAt = $now;
@@ -279,6 +283,18 @@ class SheetDocument
     public function setValidationErrors(array $validationErrors): static
     {
         $this->validationErrors = $validationErrors;
+
+        return $this;
+    }
+
+    public function getValidationDetails(): array
+    {
+        return $this->validationDetails;
+    }
+
+    public function setValidationDetails(array $validationDetails): static
+    {
+        $this->validationDetails = $validationDetails;
 
         return $this;
     }
