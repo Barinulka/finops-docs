@@ -23,7 +23,7 @@ final readonly class SheetDocumentGoogleSheetRowMapper
             'H' => $fields['beneficiaryName'] ?? null,
             'I' => $fields['beneficiaryCountry'] ?? null,
             'J' => $fields['requestDate'] ?? null,
-            'K' => $this->extractBusinessDays($fields['executionTermRaw'] ?? null),
+            'K' => $this->resolveExecutionBusinessDays($fields),
             'L' => $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null),
             'M' => $this->extractBusinessDays($fields['paymentTermRaw'] ?? null),
             'N' => $fields['paymentCurrency'] ?? null,
@@ -72,6 +72,69 @@ final readonly class SheetDocumentGoogleSheetRowMapper
         }
 
         return implode("\n\n", $parts);
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveExecutionBusinessDays(array $fields): ?int
+    {
+        $businessDays = $this->extractBusinessDays($fields['executionTermRaw'] ?? null);
+
+        if ($businessDays !== null) {
+            return $businessDays;
+        }
+
+        return $this->countBusinessDaysBetween(
+            $fields['requestDate'] ?? null,
+            $fields['executionDueDate'] ?? null,
+        );
+    }
+
+    private function countBusinessDaysBetween(mixed $startDate, mixed $endDate): ?int
+    {
+        $start = $this->dateFromValue($startDate);
+        $end = $this->dateFromValue($endDate);
+
+        if ($start === null || $end === null) {
+            return null;
+        }
+
+        if ($end < $start) {
+            return null;
+        }
+
+        $days = 0;
+        $current = $start->modify('+1 day');
+
+        while ($current <= $end) {
+            if ((int) $current->format('N') <= 5) {
+                ++$days;
+            }
+
+            $current = $current->modify('+1 day');
+        }
+
+        return $days;
+    }
+
+    private function dateFromValue(mixed $value): ?\DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        foreach (['Y-m-d', 'd.m.Y'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat('!' . $format, $text);
+
+            if ($date instanceof \DateTimeImmutable) {
+                return $date;
+            }
+        }
+
+        return null;
     }
 
     private function extractBusinessDays(mixed $value): ?int

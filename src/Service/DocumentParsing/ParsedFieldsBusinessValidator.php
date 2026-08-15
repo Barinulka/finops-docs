@@ -41,6 +41,7 @@ final readonly class ParsedFieldsBusinessValidator
         $this->validatePaymentAmountRub($fields, $errors, $details);
         $this->validateAgencyFeeAmountRub($fields, $errors, $details);
         $this->validateTotalAmountRub($fields, $errors, $details);
+        $this->validateExecutionBusinessDays($fields, $details);
 
         return new ParsedFieldsValidationResult($errors, $details);
     }
@@ -344,5 +345,119 @@ final readonly class ParsedFieldsBusinessValidator
         }
 
         return bccomp($diff, '1.00', 2) <= 0;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     * @param list<array<string, string|null>> $details
+     */
+    private function validateExecutionBusinessDays(array $fields, array &$details): void
+    {
+        $executionTermRaw = $fields['executionTermRaw'] ?? null;
+        $requestDate = $fields['requestDate'] ?? null;
+        $executionDueDate = $fields['executionDueDate'] ?? null;
+
+        $businessDays = $this->extractBusinessDays($executionTermRaw);
+
+        if ($businessDays !== null) {
+            $details[] = [
+                'title' => 'Срок исполнения',
+                'status' => 'passed',
+                'formula' => sprintf('Из документа: %s', (string) $executionTermRaw),
+                'expected' => (string) $businessDays,
+                'actual' => (string) $businessDays,
+                'message' => 'Срок исполнения указан числом рабочих дней.',
+            ];
+
+            return;
+        }
+
+        $calculatedBusinessDays = $this->countBusinessDaysBetween($requestDate, $executionDueDate);
+
+        if ($calculatedBusinessDays === null) {
+            return;
+        }
+
+        $details[] = [
+            'title' => 'Срок исполнения',
+            'status' => 'passed',
+            'formula' => sprintf(
+                'Рабочие дни между %s и %s, дата заявки не считается, дата исполнения считается',
+                (string) $requestDate,
+                (string) $executionDueDate,
+            ),
+            'expected' => (string) $calculatedBusinessDays,
+            'actual' => (string) $calculatedBusinessDays,
+            'message' => 'Срок исполнения рассчитан по дате заявки и дате исполнения.',
+        ];
+    }
+
+    private function extractBusinessDays(mixed $value): ?int
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $text = (string) $value;
+
+        if (preg_match('/(\d+)\s*\([^)]*\)\s*(?:рабочего|рабочих|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        if (preg_match('/(\d+)\s*(?:рабочего|рабочих|раб\.?|working|business)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        if (preg_match('/(\d+)\s+(?:дня|дней|день|days?|day)/iu', $text, $match) === 1) {
+            return (int) $match[1];
+        }
+
+        return null;
+    }
+
+    private function countBusinessDaysBetween(mixed $startDate, mixed $endDate): ?int
+    {
+        $start = $this->dateFromValue($startDate);
+        $end = $this->dateFromValue($endDate);
+
+        if ($start === null || $end === null) {
+            return null;
+        }
+
+        if ($end < $start) {
+            return null;
+        }
+
+        $days = 0;
+        $current = $start->modify('+1 day');
+
+        while ($current <= $end) {
+            if ((int) $current->format('N') <= 5) {
+                ++$days;
+            }
+
+            $current = $current->modify('+1 day');
+        }
+
+        return $days;
+    }
+
+    private function dateFromValue(mixed $value): ?\DateTimeImmutable
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $text = trim((string) $value);
+
+        foreach (['Y-m-d', 'd.m.Y'] as $format) {
+            $date = \DateTimeImmutable::createFromFormat('!' . $format, $text);
+
+            if ($date instanceof \DateTimeImmutable) {
+                return $date;
+            }
+        }
+
+        return null;
     }
 }
