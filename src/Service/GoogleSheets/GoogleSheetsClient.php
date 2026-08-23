@@ -151,7 +151,7 @@ final readonly class GoogleSheetsClient
 
         $response = $service->spreadsheets_values->get(
             $this->config->spreadsheetId,
-            sprintf('%s!E%d:I', $this->quoteSheetName(), $dataStartRow),
+            sprintf('%s!E%d:I10000', $this->quoteSheetName(), $dataStartRow),
         );
 
         $rows = $response->getValues() ?? [];
