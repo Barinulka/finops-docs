@@ -274,7 +274,7 @@ final readonly class SheetDocumentGoogleSheetRowMapper
         }
 
         if ($this->isX5Contract($fields)) {
-            return 'X5';
+            return 'Х5';
         }
 
         return null;
