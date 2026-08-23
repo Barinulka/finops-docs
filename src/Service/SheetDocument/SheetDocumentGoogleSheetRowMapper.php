@@ -3,9 +3,15 @@
 namespace App\Service\SheetDocument;
 
 use App\Entity\SheetDocument;
+use App\Service\Geo\CountryNameLocalizer;
 
 final readonly class SheetDocumentGoogleSheetRowMapper
 {
+    public function __construct(
+        private CountryNameLocalizer $countryNameLocalizer,
+    ) {
+    }
+
     /**
      * Возвращает только те колонки, которые мы имеем право заполнять.
      * Формульные и автоматические колонки сюда не добавляем.
@@ -23,7 +29,7 @@ final readonly class SheetDocumentGoogleSheetRowMapper
             'G' => $this->decimalToFloat($fields['paymentAmount'] ?? null),
             'H' => $fields['paymentCurrency'] ?? null,
             'I' => $fields['beneficiaryName'] ?? null,
-            'J' => $fields['beneficiaryCountry'] ?? null,
+            'J' => $this->countryNameLocalizer->toRussian($fields['beneficiaryCountry'] ?? null),
             'K' => $this->resolveExecutionBusinessDays($fields),
             'L' => $this->formatPercent($this->resolveAgencyFeePercent($fields)),
 //            'M' => $this->resolveExecutionDueDate($fields),
