@@ -17,20 +17,20 @@ final readonly class SheetDocumentGoogleSheetRowMapper
         $fields = $sheetDocument->getParsedFields();
 
         return array_filter([
-            'B' => $this->buildDocumentNumber($fields),
-//            'D' => $this->buildComment($sheetDocument),
-            'G' => $fields['clientName'] ?? null,
-            'H' => $fields['beneficiaryName'] ?? null,
-            'I' => $fields['beneficiaryCountry'] ?? null,
-            'J' => $fields['requestDate'] ?? null,
+            'D' => $fields['requestDate'] ?? null,
+            'E' => $this->buildRequestNumber($fields),
+            'F' => $this->resolveClientName($fields),
+            'G' => $this->decimalToFloat($fields['paymentAmount'] ?? null),
+            'H' => $fields['paymentCurrency'] ?? null,
+            'I' => $fields['beneficiaryName'] ?? null,
+            'J' => $fields['beneficiaryCountry'] ?? null,
             'K' => $this->resolveExecutionBusinessDays($fields),
-            'L' => $this->mapPaymentType($fields['paymentType'] ?? null, $fields['paymentTypeRaw'] ?? null),
-            'M' => $this->extractBusinessDays($fields['paymentTermRaw'] ?? null),
-            'N' => $fields['paymentCurrency'] ?? null,
-            'O' => $this->decimalToFloat($fields['paymentAmount'] ?? null),
-            'P' => $this->formatPercent($this->resolveAgencyFeePercent($fields)),
-            'Q' => $this->decimalToFloat($fields['extraPaymentAmount'] ?? null),
-            'R' => $fields['extraPaymentCurrency'] ?? null,
+            'L' => $this->formatPercent($this->resolveAgencyFeePercent($fields)),
+            'M' => $this->resolveExecutionDueDate($fields),
+            'N' => 'Предоплата',
+            'O' => $this->resolveExtraPaymentAmount($fields),
+            'P' => $this->resolveExtraPaymentCurrency($fields),
+            'Q' => 'RUB',
         ], static fn (mixed $value): bool => $value !== null && $value !== '');
     }
 
@@ -79,6 +79,9 @@ final readonly class SheetDocumentGoogleSheetRowMapper
      */
     private function resolveExecutionBusinessDays(array $fields): ?int
     {
+        if (($fields['executionBusinessDays'] ?? null) !== null && $fields['executionBusinessDays'] !== '') {
+            return (int) $fields['executionBusinessDays'];
+        }
         $businessDays = $this->extractBusinessDays($fields['executionTermRaw'] ?? null);
 
         if ($businessDays !== null) {
@@ -239,5 +242,102 @@ final readonly class SheetDocumentGoogleSheetRowMapper
         }
 
         return (float) $normalized;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function buildRequestNumber(array $fields): ?string
+    {
+        $requestNumber = $fields['requestNumber'] ?? null;
+
+        if ($requestNumber === null || $requestNumber === '') {
+            return null;
+        }
+
+        return (string) $requestNumber;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveClientName(array $fields): ?string
+    {
+        if (($fields['clientName'] ?? null) !== null && $fields['clientName'] !== '') {
+            return (string) $fields['clientName'];
+        }
+
+        if ($this->isX5Contract($fields)) {
+            return 'X5';
+        }
+
+        return null;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveExecutionDueDate(array $fields): ?string
+    {
+        if (($fields['executionDueDate'] ?? null) !== null && $fields['executionDueDate'] !== '') {
+            return (string) $fields['executionDueDate'];
+        }
+
+        $requestDate = $this->dateFromValue($fields['requestDate'] ?? null);
+        $businessDays = $this->resolveExecutionBusinessDays($fields);
+
+        if ($requestDate === null || $businessDays === null) {
+            return null;
+        }
+
+        return $this->addBusinessDays($requestDate, $businessDays)->format('Y-m-d');
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveExtraPaymentAmount(array $fields): ?float
+    {
+        if ($this->isX5Contract($fields)) {
+            return 0.0;
+        }
+
+        return $this->decimalToFloat($fields['extraPaymentAmount'] ?? null);
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function resolveExtraPaymentCurrency(array $fields): ?string
+    {
+        if ($this->isX5Contract($fields)) {
+            return null;
+        }
+
+        return $fields['extraPaymentCurrency'] ?? null;
+    }
+
+    /**
+     * @param array<string, mixed> $fields
+     */
+    private function isX5Contract(array $fields): bool
+    {
+        return ($fields['contractNumber'] ?? null) === '6-2-100/018005-25';
+    }
+
+    private function addBusinessDays(\DateTimeImmutable $date, int $businessDays): \DateTimeImmutable
+    {
+        $current = $date;
+        $added = 0;
+
+        while ($added < $businessDays) {
+            $current = $current->modify('+1 day');
+
+            if ((int) $current->format('N') <= 5) {
+                ++$added;
+            }
+        }
+
+        return $current;
     }
 }

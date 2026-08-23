@@ -94,7 +94,7 @@ final readonly class GoogleSheetsClient
         $client = $this->createClient();
         $service = new Sheets($client);
 
-        $nextRowNumber = $this->resolveNextRowNumber($service);
+        $nextRowNumber = $this->resolveNextWritableRowNumber($service);
         $this->ensureRowExists($service, $nextRowNumber);
 
         $data = [];
@@ -145,20 +145,43 @@ final readonly class GoogleSheetsClient
         return $client;
     }
 
-    private function resolveNextRowNumber(Sheets $service): int
+    private function resolveNextWritableRowNumber(Sheets $service): int
     {
+        $dataStartRow = 5;
+
         $response = $service->spreadsheets_values->get(
             $this->config->spreadsheetId,
-            sprintf('%s!B:B', $this->quoteSheetName()),
+            sprintf('%s!E%d:I', $this->quoteSheetName(), $dataStartRow),
         );
 
-        $values = $response->getValues();
+        $rows = $response->getValues() ?? [];
 
-        if ($values === null || $values === []) {
-            return 1;
+        foreach ($rows as $offset => $row) {
+            $requestNumber = $this->cellValue($row, 0); // E
+            $amount = $this->cellValue($row, 2); // G
+            $currency = $this->cellValue($row, 3); // H
+            $beneficiary = $this->cellValue($row, 4); // I
+
+            if ($requestNumber === '' && $amount === '' && $currency === '' && $beneficiary === '') {
+                return $dataStartRow + $offset;
+            }
         }
 
-        return count($values) + 1;
+        return $dataStartRow + count($rows);
+    }
+
+    /**
+     * @param list<mixed> $row
+     */
+    private function cellValue(array $row, int $index): string
+    {
+        $value = $row[$index] ?? '';
+
+        if ($value === null) {
+            return '';
+        }
+
+        return trim((string) $value);
     }
 
     private function quoteSheetName(): string
