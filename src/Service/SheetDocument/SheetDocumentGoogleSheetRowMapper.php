@@ -26,7 +26,7 @@ final readonly class SheetDocumentGoogleSheetRowMapper
             'J' => $fields['beneficiaryCountry'] ?? null,
             'K' => $this->resolveExecutionBusinessDays($fields),
             'L' => $this->formatPercent($this->resolveAgencyFeePercent($fields)),
-            'M' => $this->resolveExecutionDueDate($fields),
+//            'M' => $this->resolveExecutionDueDate($fields),
             'N' => 'Предоплата',
             'O' => $this->resolveExtraPaymentAmount($fields),
             'P' => $this->resolveExtraPaymentCurrency($fields),
